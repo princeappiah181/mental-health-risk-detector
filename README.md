@@ -95,14 +95,14 @@ I feel tired of everything
 I do not know how much longer I can keep going
 
 ---
-## 🧪 Tech Stack
+### 🧪 Tech Stack
 Python
 scikit-learn
 pandas / numpy
 Streamlit
 
 ---
-## ⚠️ Ethical Considerations
+### ⚠️ Ethical Considerations
 This is a research prototype, not a clinical system.
 Not intended for:
 diagnosis
@@ -114,24 +114,24 @@ human-in-the-loop design
 transparent model behavior
 
 ---
-## 📉 Limitations
+### 📉 Limitations
 Label ambiguity (depression vs SuicideWatch overlap)
 Text-only analysis (no context or history)
 False positives and false negatives remain
 
 ---
-## 🚀 Future Improvements
+### 🚀 Future Improvements
 Transformer-based models (BERT)
 Temporal user-level modeling
 Improved uncertainty estimation
 Deployment with pre-trained model (faster startup)
 
 ---
-## ▶️ Run Locally
+### ▶️ Run Locally
 pip install -r requirements.txt
 streamlit run app.py
 
 ---
-## 👤 Author
+### 👤 Author
 Prince Appiah
 PhD Data Science 
