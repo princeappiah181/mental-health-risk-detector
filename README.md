@@ -94,3 +94,41 @@ text
 I feel tired of everything
 I do not know how much longer I can keep going
 
+
+🧪 Tech Stack
+    •    Python
+    •    scikit-learn (TF-IDF + Logistic Regression)
+    •    pandas / numpy (data processing)
+    •    Streamlit (interactive web app)
+
+⸻
+
+⚠️ Ethical Considerations
+
+This project is a research prototype for risk signal detection, not a clinical system.
+
+Not intended for:
+    •    diagnosis
+    •    treatment decisions
+    •    automated intervention
+
+Safeguards implemented:
+    •    uncertainty-based review mechanism
+    •    human-in-the-loop design
+    •    transparent model behavior and outputs
+
+⸻
+
+📉 Limitations
+    •    Label ambiguity (depression vs SuicideWatch overlap)
+    •    Text-only analysis (no user context or history)
+    •    False positives and false negatives remain
+    •    Model performance depends on dataset assumptions
+
+⸻
+
+🚀 Future Improvements
+    •    Transformer-based models (e.g., BERT)
+    •    Temporal modeling of user activity
+    •    More robust uncertainty estimation
+    •    Pre-trained model deployment for faster inference
