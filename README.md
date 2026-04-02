@@ -94,7 +94,3 @@ text
 I feel tired of everything
 I do not know how much longer I can keep going
 
----
-### 👤 Author
-Prince Appiah
-PhD Data Science 
