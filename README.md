@@ -1,137 +1,136 @@
-🧠 Mental Health Risk Signal Detector
+🧠 Mental Health Risk Signal Detector<br>
 
-A Streamlit-based NLP risk signal detection system that analyzes social media-style text and identifies potential mental health risk signals using machine learning.
+A Streamlit-based NLP risk signal detection system that analyzes social media-style text and identifies potential mental health risk signals using machine learning.<br>
 
-🔗 Live App: https://your-app-name.streamlit.app
-🔗 GitHub Repo: https://github.com/YOUR_USERNAME/mental-health-risk-detector
-
-⸻
-
-🚨 Problem
-
-Individuals often express distress signals online before intervention.
-However, detecting these signals is challenging due to:
-    •    subtle language patterns
-    •    overlapping emotional expressions
-    •    noisy and ambiguous labels
-
-This project builds a triage-style system that helps flag potential high-risk posts for human review, rather than attempting clinical diagnosis.
+🔗 Live App: https://your-app-name.streamlit.app<br>
+🔗 GitHub Repo: https://github.com/YOUR_USERNAME/mental-health-risk-detector<br>
 
 ⸻
 
-💡 Solution
+🚨 Problem<br>
 
-This system uses:
-    •    TF-IDF + Logistic Regression
-    •    Probability-based risk scoring
-    •    Threshold optimization for safety-sensitive detection
-    •    Human-in-the-loop review mechanism
+Individuals often express distress signals online before intervention.<br>
+However, detecting these signals is challenging due to:<br>
+    •    subtle language patterns<br>
+    •    overlapping emotional expressions<br>
+    •    noisy and ambiguous labels<br>
 
-It provides:
-    •    predicted class
-    •    risk score (0–1)
-    •    uncertainty estimate
-    •    review recommendation
+This project builds a triage-style system that helps flag potential high-risk posts for human review, rather than attempting clinical diagnosis.<br>
 
 ⸻
 
-⚙️ System Design
+💡 Solution<br>
 
-Two Operating Modes
+This system uses:<br>
+    •    TF-IDF + Logistic Regression<br>
+    •    Probability-based risk scoring<br>
+    •    Threshold optimization for safety-sensitive detection<br>
+    •    Human-in-the-loop review mechanism<br>
 
-1. Balanced Mode (Threshold = 0.50)
-    •    Optimized for overall performance
-    •    Accuracy ≈ 70%
-    •    Balanced precision and recall
-
-2. Safety Mode (Threshold = 0.25)
-    •    Optimized for high recall (≈ 0.95)
-    •    Minimizes missed high-risk cases
-    •    Accepts more false positives (reviewed by humans)
-
-⸻
-
-📊 Key Insight
-
-Lowering the decision threshold significantly improves detection of high-risk signals:
-
-Recall increased to ~0.95 for high-risk posts, reducing missed cases at the cost of increased false positives.
-
-This reflects real-world risk detection systems, where missing a critical case is more costly than raising an alert.
+It provides:<br>
+    •    predicted class<br>
+    •    risk score (0–1)<br>
+    •    uncertainty estimate<br>
+    •    review recommendation<br>
 
 ⸻
 
-🧾 Features
+⚙️ System Design<br>
 
-🔎 Single Text Analysis
-    •    Real-time prediction
-    •    Risk score and classification
-    •    Uncertainty and review flag
+Two Operating Modes<br>
 
-📂 Batch Upload
-    •    Upload CSV with multiple posts
-    •    Score all entries at once
-    •    Download results
+1. Balanced Mode (Threshold = 0.50)<br>
+    •    Optimized for overall performance<br>
+    •    Accuracy ≈ 70%<br>
+    •    Balanced precision and recall<br>
 
-📊 Visualization
-    •    Risk distribution (Low / Moderate / High)
-    •    Confusion matrix comparison
-
-🧠 Explainability
-    •    Top predictive words influencing decisions
+2. Safety Mode (Threshold = 0.25)<br>
+    •    Optimized for high recall (≈ 0.95)<br>
+    •    Minimizes missed high-risk cases<br>
+    •    Accepts more false positives (reviewed by humans)<br>
 
 ⸻
 
-📁 Input Format (Batch Mode)
+📊 Key Insight<br>
 
-text
-I feel tired of everything
-I do not know how much longer I can keep going
+Lowering the decision threshold significantly improves detection of high-risk signals:<br>
 
-🧪 Tech Stack
-    •    Python
-    •    scikit-learn (TF-IDF + Logistic Regression)
-    •    pandas / numpy (data processing)
-    •    Streamlit (interactive web app)
+Recall increased to ~0.95 for high-risk posts, reducing missed cases at the cost of increased false positives.<br>
+
+This reflects real-world risk detection systems, where missing a critical case is more costly than raising an alert.<br>
 
 ⸻
 
-⚠️ Ethical Considerations
+🧾 Features<br>
 
-This project is a research prototype for risk signal detection, not a clinical system.
+🔎 Single Text Analysis<br>
+    •    Real-time prediction<br>
+    •    Risk score and classification<br>
+    •    Uncertainty and review flag<br>
 
-Not intended for:
-    •    diagnosis
-    •    treatment decisions
-    •    automated intervention
+📂 Batch Upload<br>
+    •    Upload CSV with multiple posts<br>
+    •    Score all entries at once<br>
+    •    Download results<br>
 
-Safeguards implemented:
-    •    uncertainty-based review mechanism
-    •    human-in-the-loop design
-    •    transparent model behavior and outputs
+📊 Visualization<br>
+    •    Risk distribution (Low / Moderate / High)<br>
+    •    Confusion matrix comparison<br>
 
-⸻
-
-📉 Limitations
-    •    Label ambiguity (depression vs SuicideWatch overlap)
-    •    Text-only analysis (no user context or history)
-    •    False positives and false negatives remain
-    •    Model performance depends on dataset assumptions
+🧠 Explainability<br>
+    •    Top predictive words influencing decisions<br>
 
 ⸻
 
-🚀 Future Improvements
-    •    Transformer-based models (e.g., BERT)
-    •    Temporal modeling of user activity
-    •    More robust uncertainty estimation
-    •    Pre-trained model deployment for faster inference
+📁 Input Format (Batch Mode)<br>
 
-▶️ Run Locally
+text<br>
+I feel tired of everything<br>
+I do not know how much longer I can keep going<br>
 
-pip install -r requirements.txt
-streamlit run app.py
+🧪 Tech Stack<br>
+    •    Python<br>
+    •    scikit-learn (TF-IDF + Logistic Regression)<br>
+    •    pandas / numpy (data processing)<br>
+    •    Streamlit (interactive web app)<br>
 
-👤 Author
+⸻
 
-Prince Appiah
-PhD Data Science
+⚠️ Ethical Considerations<br>
+
+This project is a research prototype for risk signal detection, not a clinical system.<br>
+
+Not intended for:<br>
+    •    diagnosis<br>
+    •    treatment decisions<br>
+    •    automated intervention<br>
+
+Safeguards implemented:<br>
+    •    uncertainty-based review mechanism<br>
+    •    human-in-the-loop design<br>
+    •    transparent model behavior and outputs<br>
+
+⸻
+
+📉 Limitations<br>
+    •    Label ambiguity (depression vs SuicideWatch overlap)<br>
+    •    Text-only analysis (no user context or history)<br>
+    •    False positives and false negatives remain<br>
+    •    Model performance depends on dataset assumptions<br>
+
+⸻
+
+🚀 Future Improvements<br>
+    •    Transformer-based models (e.g., BERT)<br>
+    •    Temporal modeling of user activity<br>
+    •    More robust uncertainty estimation<br>
+    •    Pre-trained model deployment for faster inference<br>
+
+▶️ Run Locally<br>
+
+pip install -r requirements.txt<br>
+streamlit run app.py<br>
+
+👤 Author<br>
+Prince Appiah<br>
+PhD Data Science<br>
