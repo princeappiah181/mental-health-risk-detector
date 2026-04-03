@@ -2,8 +2,8 @@
 
 A Streamlit-based NLP risk signal detection system that analyzes social media-style text and identifies potential mental health risk signals using machine learning.<br>
 
-🔗 Live App: https://your-app-name.streamlit.app<br>
-🔗 GitHub Repo: https://github.com/YOUR_USERNAME/mental-health-risk-detector<br>
+🔗 Live App: https://mental-health-risk-detector-b5skfn3gxfdrimhz5f8hrr.streamlit.app/<br>
+
 
 ⸻
 
