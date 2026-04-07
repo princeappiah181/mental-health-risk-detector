@@ -593,7 +593,7 @@ This system is designed as a research prototype for risk signal triage in social
 - replacing human judgment
 
 ### Safeguards Included
-- dual operating modes for different risk tolerances
+- Dual operating modes for different risk tolerances
 - uncertainty-aware review logic
 - human-review recommendation for borderline cases
 - transparent model behavior through feature inspection
