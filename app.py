@@ -153,12 +153,6 @@ def generate_ai_explanation(
     needs_review: bool,
     mode_name: str
 ):
-    """
-    Returns a dict with:
-    - explanation
-    - detected_signals (list)
-    - suggested_action
-    """
     suggested_action = build_action_label(risk_level, needs_review)
 
     prompt = f"""
@@ -203,8 +197,6 @@ Rules:
         )
 
         content = response.choices[0].message.content.strip()
-
-        # try direct JSON parse
         parsed = json.loads(content)
 
         explanation = parsed.get("explanation", "No explanation generated.")
@@ -221,10 +213,9 @@ Rules:
         }
 
     except Exception:
-        # fallback, no crash
         fallback_signals = []
         lower_text = raw_text.lower()
-        for word in ["hopeless", "empty", "tired", "alone", "give up", "can't go on", "hurt", "die", "suicide"]:
+        for word in ["hopeless", "empty", "tired", "alone", "give up", "cant go on", "hurt", "die", "suicide"]:
             if word in lower_text:
                 fallback_signals.append(word)
 
@@ -238,6 +229,90 @@ Rules:
             ),
             "detected_signals": fallback_signals[:3],
             "suggested_action": suggested_action
+        }
+
+def generate_batch_ai_summary(final_batch: pd.DataFrame):
+    try:
+        high_count = int((final_batch["risk_level"] == "High").sum())
+        review_count = int(final_batch["needs_review"].sum())
+        total_count = int(len(final_batch))
+
+        sample_rows = final_batch.head(20).copy()
+
+        example_lines = []
+        for _, row in sample_rows.iterrows():
+            raw_text = str(row.get("text", ""))[:300]
+            example_lines.append(
+                f"- Text: {raw_text}\n"
+                f"  Predicted class: {row.get('predicted_class', '')}\n"
+                f"  Risk level: {row.get('risk_level', '')}\n"
+                f"  Risk score: {row.get('risk_score', '')}\n"
+                f"  Needs review: {row.get('needs_review', '')}"
+            )
+
+        joined_examples = "\n".join(example_lines)
+
+        prompt = f"""
+You are assisting with a research prototype for mental health risk triage.
+This is NOT a diagnosis system. Do not make clinical claims.
+
+Below is a batch of analyzed posts.
+
+Batch stats:
+- Total posts: {total_count}
+- High risk count: {high_count}
+- Needs review count: {review_count}
+
+Examples:
+{joined_examples}
+
+Return ONLY valid JSON with this schema:
+{{
+  "summary": "3-5 sentence summary of the overall batch",
+  "dominant_signals": ["signal1", "signal2", "signal3"],
+  "follow_up_focus": "one short paragraph with recommended review focus"
+}}
+
+Rules:
+- Keep the language non-clinical
+- Focus on patterns such as hopelessness, emotional distress, fatigue, uncertainty, isolation, self-harm language
+- Do not overstate certainty
+"""
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            temperature=0.2,
+            messages=[
+                {"role": "system", "content": "You are a careful assistant that returns only valid JSON."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        content = response.choices[0].message.content.strip()
+        parsed = json.loads(content)
+
+        return {
+            "summary": parsed.get("summary", "No summary generated."),
+            "dominant_signals": parsed.get("dominant_signals", []),
+            "follow_up_focus": parsed.get("follow_up_focus", "No follow-up focus generated.")
+        }
+
+    except Exception:
+        high_count = int((final_batch["risk_level"] == "High").sum())
+        review_count = int(final_batch["needs_review"].sum())
+        total_count = int(len(final_batch))
+
+        return {
+            "summary": (
+                f"This batch contains {total_count} posts, with {high_count} classified as high risk "
+                f"and {review_count} flagged for review. The outputs suggest a mix of moderate-to-high concern "
+                f"content that may warrant closer inspection."
+            ),
+            "dominant_signals": ["emotional distress", "hopelessness", "review-needed language"],
+            "follow_up_focus": (
+                "Prioritize posts classified as High and then examine posts flagged for review. "
+                "Look for repeated patterns of hopelessness, overwhelm, or self-harm-related language."
+            )
         }
 
 # =========================================================
@@ -618,6 +693,24 @@ Recommended column name: **text**
                 st.markdown("### Risk Level Distribution")
                 chart_df = summary_counts.set_index("risk_level")
                 st.bar_chart(chart_df["count"])
+
+                st.markdown("### 🧠 AI Batch Summary")
+
+                with st.spinner("Generating AI summary for batch results..."):
+                    batch_ai_summary = generate_batch_ai_summary(final_batch)
+
+                st.markdown("#### Summary")
+                st.write(batch_ai_summary["summary"])
+
+                st.markdown("#### Dominant Signals")
+                if batch_ai_summary["dominant_signals"]:
+                    for sig in batch_ai_summary["dominant_signals"]:
+                        st.write(f"- {sig}")
+                else:
+                    st.write("- No dominant signals extracted")
+
+                st.markdown("#### Suggested Follow-Up Focus")
+                st.info(batch_ai_summary["follow_up_focus"])
 
 # =========================================================
 # TAB 4: MODEL PERFORMANCE
