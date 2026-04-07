@@ -599,7 +599,7 @@ This system is designed as a research prototype for risk signal triage in social
 - transparent model behavior through feature inspection
 
 ### Known Limitations
-- labels may overlap semantically
+- Labels may overlap semantically
 - text alone does not capture full human context
 - false positives and false negatives remain possible
 - performance depends on the training dataset and its assumptions
