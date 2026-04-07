@@ -3,7 +3,6 @@
 
 # In[ ]:
 
-
 import os
 import re
 import string
@@ -12,6 +11,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import speech_recognition as sr
+
+from st_audiorec import st_audiorec
 
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -123,15 +124,11 @@ def predict_scores(text_list, vectorizer, model, threshold, mode_name):
 
     return pd.DataFrame(records)
 
-def transcribe_audio_file(audio_file):
-    """
-    Transcribe audio recorded with st.audio_input using SpeechRecognition.
-    """
+def transcribe_wav_bytes(wav_bytes):
     recognizer = sr.Recognizer()
-    audio_bytes = audio_file.read()
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-        tmp.write(audio_bytes)
+        tmp.write(wav_bytes)
         tmp_path = tmp.name
 
     try:
@@ -391,21 +388,21 @@ with tab2:
 
     st.markdown(
         """
-Record speech from your microphone, convert it to text, review the transcript,
+Record speech directly in the browser, convert it to text, review the transcript,
 and then analyze it with the model.
 
 **Important:** Speech transcription can make mistakes, so always review the text before analysis.
 """
     )
 
-    audio_value = st.audio_input("Record your voice")
+    wav_audio_data = st_audiorec()
 
-    if audio_value is not None:
-        st.audio(audio_value)
+    if wav_audio_data is not None:
+        st.audio(wav_audio_data, format="audio/wav")
 
-        if st.button("Transcribe Audio"):
+        if st.button("Transcribe Recording"):
             try:
-                transcript = transcribe_audio_file(audio_value)
+                transcript = transcribe_wav_bytes(wav_audio_data)
                 st.session_state.voice_transcript = transcript
                 st.success("Transcription completed.")
             except sr.UnknownValueError:
@@ -418,7 +415,8 @@ and then analyze it with the model.
     transcript_text = st.text_area(
         "Transcript (editable before analysis)",
         value=st.session_state.voice_transcript,
-        height=180
+        height=180,
+        key="voice_transcript_box"
     )
 
     if st.button("Analyze Transcript"):
@@ -460,7 +458,6 @@ and then analyze it with the model.
 """
             )
 
-            result_df["original_text"] = transcript_text
             st.session_state.prediction_log = pd.concat(
                 [st.session_state.prediction_log, result_df],
                 ignore_index=True
@@ -644,4 +641,4 @@ This system is designed as a research prototype for risk signal triage in social
     )
 
 st.markdown("---")
-st.caption("Built with Streamlit, TF-IDF, Logistic Regression, and speech-to-text support.")
+st.caption("Built with Streamlit, TF-IDF, Logistic Regression, browser audio recording, and speech-to-text support.")
