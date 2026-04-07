@@ -4,11 +4,14 @@
 # In[ ]:
 
 
+import os
 import re
 import string
+import tempfile
 import numpy as np
 import pandas as pd
 import streamlit as st
+import speech_recognition as sr
 
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -35,11 +38,20 @@ st.set_page_config(
 if "prediction_log" not in st.session_state:
     st.session_state.prediction_log = pd.DataFrame(
         columns=[
-            "mode", "original_text", "cleaned_text", "predicted_class",
-            "predicted_label", "risk_score", "uncertainty",
-            "needs_review", "risk_level"
+            "mode",
+            "original_text",
+            "cleaned_text",
+            "predicted_class",
+            "predicted_label",
+            "risk_score",
+            "uncertainty",
+            "needs_review",
+            "risk_level"
         ]
     )
+
+if "voice_transcript" not in st.session_state:
+    st.session_state.voice_transcript = ""
 
 # =========================================================
 # TEXT CLEANING
@@ -111,12 +123,32 @@ def predict_scores(text_list, vectorizer, model, threshold, mode_name):
 
     return pd.DataFrame(records)
 
+def transcribe_audio_file(audio_file):
+    """
+    Transcribe audio recorded with st.audio_input using SpeechRecognition.
+    """
+    recognizer = sr.Recognizer()
+    audio_bytes = audio_file.read()
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+        tmp.write(audio_bytes)
+        tmp_path = tmp.name
+
+    try:
+        with sr.AudioFile(tmp_path) as source:
+            audio_data = recognizer.record(source)
+        transcript = recognizer.recognize_google(audio_data)
+        return transcript
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
 # =========================================================
 # TRAIN MODEL
 # =========================================================
 @st.cache_resource
 def train_pipeline():
-    df = pd.read_csv("reddit_depression_suicidewatch.csv")
+    df = pd.read_csv("data/raw/reddit_depression_suicidewatch.csv")
 
     df = df[["text", "label"]].copy()
     df["text"] = df["text"].fillna("").astype(str)
@@ -254,8 +286,9 @@ It also provides:
 # =========================================================
 # TABS
 # =========================================================
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔎 Analyze Text",
+    "🎤 Voice Input",
     "📂 Batch Upload",
     "📊 Model Performance",
     "🧾 Explainability",
@@ -346,13 +379,97 @@ with tab1:
         if st.button("Clear Prediction Log"):
             st.session_state.prediction_log = st.session_state.prediction_log.iloc[0:0]
             st.success("Prediction log cleared.")
+            st.rerun()
     else:
         st.info("No predictions logged yet.")
 
 # =========================================================
-# TAB 2: BATCH UPLOAD
-# =========================================================               
+# TAB 2: VOICE INPUT
+# =========================================================
 with tab2:
+    st.subheader("Voice Input")
+
+    st.markdown(
+        """
+Record speech from your microphone, convert it to text, review the transcript,
+and then analyze it with the model.
+
+**Important:** Speech transcription can make mistakes, so always review the text before analysis.
+"""
+    )
+
+    audio_value = st.audio_input("Record your voice")
+
+    if audio_value is not None:
+        st.audio(audio_value)
+
+        if st.button("Transcribe Audio"):
+            try:
+                transcript = transcribe_audio_file(audio_value)
+                st.session_state.voice_transcript = transcript
+                st.success("Transcription completed.")
+            except sr.UnknownValueError:
+                st.error("Sorry, the speech could not be understood.")
+            except sr.RequestError as e:
+                st.error(f"Speech recognition service error: {e}")
+            except Exception as e:
+                st.error(f"Unexpected transcription error: {e}")
+
+    transcript_text = st.text_area(
+        "Transcript (editable before analysis)",
+        value=st.session_state.voice_transcript,
+        height=180
+    )
+
+    if st.button("Analyze Transcript"):
+        if not transcript_text.strip():
+            st.error("Please record audio or enter transcript text first.")
+        else:
+            result_df = predict_scores(
+                [transcript_text],
+                vectorizer,
+                model,
+                active_threshold,
+                mode
+            )
+            result = result_df.iloc[0]
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Predicted Class", result["predicted_class"])
+            c2.metric("Risk Score", f"{result['risk_score']:.3f}")
+            c3.metric("Uncertainty", f"{result['uncertainty']:.3f}")
+            c4.metric("Risk Level", result["risk_level"])
+
+            if result["needs_review"]:
+                st.warning("This transcript falls into the human-review zone for the selected mode.")
+            else:
+                st.success("This transcript is outside the human-review zone for the selected mode.")
+
+            st.markdown("### Cleaned Transcript Used by the Model")
+            st.write(result["cleaned_text"])
+
+            st.markdown("### Interpretation")
+            st.write(
+                f"""
+- **Mode:** {result['mode']}
+- **Threshold used:** {active_threshold}
+- **Predicted class:** {result['predicted_class']}
+- **Risk score:** {result['risk_score']:.3f}
+- **Risk level:** {result['risk_level']}
+- **Needs review:** {result['needs_review']}
+"""
+            )
+
+            result_df["original_text"] = transcript_text
+            st.session_state.prediction_log = pd.concat(
+                [st.session_state.prediction_log, result_df],
+                ignore_index=True
+            )
+
+# =========================================================
+# TAB 3: BATCH UPLOAD
+# =========================================================
+with tab3:
     st.subheader("Batch Score Multiple Posts")
 
     st.markdown(
@@ -419,9 +536,9 @@ Recommended column name: **text**
                 st.bar_chart(chart_df["count"])
 
 # =========================================================
-# TAB 3: MODEL PERFORMANCE
+# TAB 4: MODEL PERFORMANCE
 # =========================================================
-with tab3:
+with tab4:
     st.subheader("Performance Summary")
 
     summary_df = pd.DataFrame({
@@ -473,9 +590,9 @@ with tab3:
         st.dataframe(cm_safe, use_container_width=True)
 
 # =========================================================
-# TAB 4: EXPLAINABILITY
+# TAB 5: EXPLAINABILITY
 # =========================================================
-with tab4:
+with tab5:
     st.subheader("Top Predictive Words / Phrases")
 
     col1, col2 = st.columns(2)
@@ -495,9 +612,9 @@ with tab4:
     )
 
 # =========================================================
-# TAB 5: ETHICS
+# TAB 6: ETHICS
 # =========================================================
-with tab5:
+with tab6:
     st.subheader("Ethical Safeguards and Responsible Use")
 
     st.markdown(
@@ -522,9 +639,9 @@ This system is designed as a research prototype for risk signal triage in social
 - text alone does not capture full human context
 - false positives and false negatives remain possible
 - performance depends on the training dataset and its assumptions
+- speech transcription errors may affect downstream predictions
 """
     )
 
 st.markdown("---")
-st.caption("Built with Streamlit, TF-IDF, and Logistic Regression.")
-
+st.caption("Built with Streamlit, TF-IDF, Logistic Regression, and speech-to-text support.")
