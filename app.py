@@ -6,12 +6,15 @@
 import os
 import re
 import string
+import math
 import tempfile
+from io import BytesIO
+
 import numpy as np
 import pandas as pd
 import streamlit as st
-import speech_recognition as sr
-
+from openai import OpenAI
+from pydub import AudioSegment
 from st_audiorec import st_audiorec
 
 from sklearn.model_selection import train_test_split
@@ -54,10 +57,24 @@ if "prediction_log" not in st.session_state:
 if "voice_transcript" not in st.session_state:
     st.session_state.voice_transcript = ""
 
+if "example_text" not in st.session_state:
+    st.session_state.example_text = ""
+
+# =========================================================
+# OPENAI CLIENT
+# =========================================================
+OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
+
+if not OPENAI_API_KEY:
+    st.error("Missing OPENAI_API_KEY. Add it in Streamlit secrets.")
+    st.stop()
+
+client = OpenAI(api_key=OPENAI_API_KEY)
+
 # =========================================================
 # TEXT CLEANING
 # =========================================================
-def clean_text(text):
+def clean_text(text: str) -> str:
     text = str(text).lower()
     text = re.sub(r"http\S+|www\S+|https\S+", " ", text)
     text = re.sub(r"@\w+", " ", text)
@@ -68,27 +85,27 @@ def clean_text(text):
 # =========================================================
 # HELPERS
 # =========================================================
-def uncertainty_score(score):
+def uncertainty_score(score: float) -> float:
     return 1 - abs(score - 0.5) * 2
 
-def risk_level_balanced(score):
+def risk_level_balanced(score: float) -> str:
     if score < 0.30:
         return "Low"
     elif score < 0.70:
         return "Moderate"
     return "High"
 
-def needs_review_balanced(score):
+def needs_review_balanced(score: float) -> bool:
     return 0.40 <= score <= 0.60
 
-def risk_level_safety(score):
+def risk_level_safety(score: float) -> str:
     if score < 0.25:
         return "Low"
     elif score < 0.60:
         return "Moderate / Review"
     return "High"
 
-def needs_review_safety(score):
+def needs_review_safety(score: float) -> bool:
     return 0.25 <= score <= 0.60
 
 def predict_scores(text_list, vectorizer, model, threshold, mode_name):
@@ -124,21 +141,59 @@ def predict_scores(text_list, vectorizer, model, threshold, mode_name):
 
     return pd.DataFrame(records)
 
-def transcribe_wav_bytes(wav_bytes):
-    recognizer = sr.Recognizer()
+# =========================================================
+# AUDIO / TRANSCRIPTION HELPERS
+# =========================================================
+def wav_bytes_to_audiosegment(wav_bytes: bytes) -> AudioSegment:
+    return AudioSegment.from_file(BytesIO(wav_bytes), format="wav")
 
+def split_audio_into_chunks(audio_segment: AudioSegment, chunk_ms: int = 60_000):
+    chunks = []
+    total_ms = len(audio_segment)
+    num_chunks = math.ceil(total_ms / chunk_ms)
+
+    for i in range(num_chunks):
+        start = i * chunk_ms
+        end = min((i + 1) * chunk_ms, total_ms)
+        chunks.append(audio_segment[start:end])
+
+    return chunks
+
+def transcribe_audiosegment_with_openai(
+    audio_segment: AudioSegment,
+    model_name: str = "gpt-4o-mini-transcribe"
+) -> str:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-        tmp.write(wav_bytes)
+        audio_segment.export(tmp.name, format="wav")
         tmp_path = tmp.name
 
     try:
-        with sr.AudioFile(tmp_path) as source:
-            audio_data = recognizer.record(source)
-        transcript = recognizer.recognize_google(audio_data)
-        return transcript
+        with open(tmp_path, "rb") as audio_file:
+            transcript = client.audio.transcriptions.create(
+                model=model_name,
+                file=audio_file
+            )
+
+        return transcript.text if hasattr(transcript, "text") else str(transcript)
+
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+
+def transcribe_long_wav_bytes(
+    wav_bytes: bytes,
+    model_name: str = "gpt-4o-mini-transcribe",
+    chunk_ms: int = 60_000
+) -> str:
+    audio = wav_bytes_to_audiosegment(wav_bytes)
+    chunks = split_audio_into_chunks(audio, chunk_ms=chunk_ms)
+
+    transcripts = []
+    for chunk in chunks:
+        text = transcribe_audiosegment_with_openai(chunk, model_name=model_name)
+        transcripts.append(text.strip())
+
+    return " ".join(t for t in transcripts if t)
 
 # =========================================================
 # TRAIN MODEL
@@ -243,14 +298,12 @@ mode = st.sidebar.radio(
 if mode == "Balanced Mode":
     active_threshold = metrics["balanced"]["threshold"]
     st.sidebar.info(
-        "Balanced Mode uses threshold = 0.50.\n\n"
-        "Best for standard evaluation and balanced performance."
+        "Balanced Mode uses threshold = 0.50.\n\nBest for standard evaluation and balanced performance."
     )
 else:
     active_threshold = metrics["safety"]["threshold"]
     st.sidebar.warning(
-        "Safety Mode uses threshold = 0.25.\n\n"
-        "Best for high recall and triage-style review."
+        "Safety Mode uses threshold = 0.25.\n\nBest for high recall and triage-style review."
     )
 
 st.sidebar.markdown("---")
@@ -311,12 +364,12 @@ with tab1:
 
     with col2:
         if st.button("Load Example"):
-            st.session_state["example_text"] = (
+            st.session_state.example_text = (
                 "I feel tired of everything and I do not know how much longer I can keep going."
             )
 
-    if "example_text" in st.session_state and not sample_text:
-        sample_text = st.session_state["example_text"]
+    if st.session_state.example_text and not sample_text:
+        sample_text = st.session_state.example_text
 
     if run_btn:
         if not sample_text.strip():
@@ -391,8 +444,14 @@ with tab2:
 Record speech directly in the browser, convert it to text, review the transcript,
 and then analyze it with the model.
 
-**Important:** Speech transcription can make mistakes, so always review the text before analysis.
+Long recordings are automatically split into smaller chunks before transcription.
 """
+    )
+
+    transcription_model = st.selectbox(
+        "Transcription model",
+        options=["gpt-4o-mini-transcribe", "gpt-4o-transcribe"],
+        index=0
     )
 
     wav_audio_data = st_audiorec()
@@ -402,15 +461,16 @@ and then analyze it with the model.
 
         if st.button("Transcribe Recording"):
             try:
-                transcript = transcribe_wav_bytes(wav_audio_data)
+                with st.spinner("Transcribing audio... please wait."):
+                    transcript = transcribe_long_wav_bytes(
+                        wav_audio_data,
+                        model_name=transcription_model,
+                        chunk_ms=60_000
+                    )
                 st.session_state.voice_transcript = transcript
                 st.success("Transcription completed.")
-            except sr.UnknownValueError:
-                st.error("Sorry, the speech could not be understood.")
-            except sr.RequestError as e:
-                st.error(f"Speech recognition service error: {e}")
             except Exception as e:
-                st.error(f"Unexpected transcription error: {e}")
+                st.error(f"Transcription failed: {e}")
 
     transcript_text = st.text_area(
         "Transcript (editable before analysis)",
@@ -641,4 +701,4 @@ This system is designed as a research prototype for risk signal triage in social
     )
 
 st.markdown("---")
-st.caption("Built with Streamlit, TF-IDF, Logistic Regression, browser audio recording, and speech-to-text support.")
+st.caption("Built with Streamlit, TF-IDF, Logistic Regression, browser audio recording, and OpenAI speech-to-text.")
