@@ -348,74 +348,60 @@ with tab2:
 
     st.markdown(
         """
-Record speech directly in the browser, convert it to text, review the transcript,
-and then analyze it with the model.
+Record speech directly in the browser and analyze it in one step.
 
-Long recordings are automatically split into smaller chunks before transcription.
+This uses **gpt-4o-mini-transcribe** for faster transcription, then sends the transcript
+to the classifier automatically.
 """
     )
 
-    transcription_model = st.selectbox(
-        "Transcription model",
-        options=["gpt-4o-mini-transcribe", "gpt-4o-transcribe"],
-        index=0
-    )
+    st.info("For best speed, keep recordings short, ideally 2–5 seconds.")
 
     wav_audio_data = st_audiorec()
 
     if wav_audio_data is not None:
         st.audio(wav_audio_data, format="audio/wav")
 
-        if st.button("Transcribe Recording"):
+        if st.button("Analyze Voice"):
             try:
-                with st.spinner("Transcribing audio... please wait."):
+                with st.spinner("Transcribing and analyzing audio..."):
                     transcript = transcribe_long_wav_bytes(
                         wav_audio_data,
-                        model_name=transcription_model,
-                        chunk_ms=60_000
+                        model_name="gpt-4o-mini-transcribe",
+                        chunk_ms=15_000
                     )
-                st.session_state.voice_transcript = transcript
-                st.success("Transcription completed.")
-            except Exception as e:
-                st.error(f"Transcription failed: {e}")
 
-    transcript_text = st.text_area(
-        "Transcript (editable before analysis)",
-        value=st.session_state.voice_transcript,
-        height=180,
-        key="voice_transcript_box"
-    )
+                    st.session_state.voice_transcript = transcript
 
-    if st.button("Analyze Transcript"):
-        if not transcript_text.strip():
-            st.error("Please record audio or enter transcript text first.")
-        else:
-            result_df = predict_scores(
-                [transcript_text],
-                vectorizer,
-                model,
-                active_threshold,
-                mode
-            )
-            result = result_df.iloc[0]
+                    result_df = predict_scores(
+                        [transcript],
+                        vectorizer,
+                        model,
+                        active_threshold,
+                        mode
+                    )
+                    result = result_df.iloc[0]
 
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Predicted Class", result["predicted_class"])
-            c2.metric("Risk Score", f"{result['risk_score']:.3f}")
-            c3.metric("Uncertainty", f"{result['uncertainty']:.3f}")
-            c4.metric("Risk Level", result["risk_level"])
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Predicted Class", result["predicted_class"])
+                c2.metric("Risk Score", f"{result['risk_score']:.3f}")
+                c3.metric("Uncertainty", f"{result['uncertainty']:.3f}")
+                c4.metric("Risk Level", result["risk_level"])
 
-            if result["needs_review"]:
-                st.warning("This transcript falls into the human-review zone for the selected mode.")
-            else:
-                st.success("This transcript is outside the human-review zone for the selected mode.")
+                if result["needs_review"]:
+                    st.warning("This voice input falls into the human-review zone for the selected mode.")
+                else:
+                    st.success("This voice input is outside the human-review zone for the selected mode.")
 
-            st.markdown("### Cleaned Transcript Used by the Model")
-            st.write(result["cleaned_text"])
+                st.markdown("### Transcript")
+                st.write(transcript)
 
-            st.markdown("### Interpretation")
-            st.write(
-                f"""
+                st.markdown("### Cleaned Transcript Used by the Model")
+                st.write(result["cleaned_text"])
+
+                st.markdown("### Interpretation")
+                st.write(
+                    f"""
 - **Mode:** {result['mode']}
 - **Threshold used:** {active_threshold}
 - **Predicted class:** {result['predicted_class']}
@@ -423,14 +409,17 @@ Long recordings are automatically split into smaller chunks before transcription
 - **Risk level:** {result['risk_level']}
 - **Needs review:** {result['needs_review']}
 """
-            )
+                )
 
-            st.session_state.prediction_log = pd.concat(
-                [st.session_state.prediction_log, result_df],
-                ignore_index=True
-            )
+                st.session_state.prediction_log = pd.concat(
+                    [st.session_state.prediction_log, result_df],
+                    ignore_index=True
+                )
 
-# =========================================================
+            except Exception as e:
+                st.error(f"Voice analysis failed: {e}")
+                
+  # =========================================================
 # TAB 3: BATCH UPLOAD
 # =========================================================
 with tab3:
