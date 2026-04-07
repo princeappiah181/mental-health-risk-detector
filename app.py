@@ -7,6 +7,7 @@ import os
 import re
 import string
 import math
+import json
 import tempfile
 from io import BytesIO
 
@@ -133,6 +134,113 @@ def predict_scores(text_list, vectorizer, model, threshold, mode_name):
     return pd.DataFrame(records)
 
 # =========================================================
+# AI EXPLANATION LAYER
+# =========================================================
+def build_action_label(risk_level: str, needs_review: bool) -> str:
+    if risk_level == "High":
+        return "Urgent review recommended"
+    if needs_review:
+        return "Review recommended"
+    if risk_level in ["Moderate", "Moderate / Review"]:
+        return "Monitor"
+    return "Low concern"
+
+def generate_ai_explanation(
+    raw_text: str,
+    predicted_class: str,
+    risk_score: float,
+    risk_level: str,
+    needs_review: bool,
+    mode_name: str
+):
+    """
+    Returns a dict with:
+    - explanation
+    - detected_signals (list)
+    - suggested_action
+    """
+    suggested_action = build_action_label(risk_level, needs_review)
+
+    prompt = f"""
+You are assisting with a research prototype for mental health risk signal triage.
+This is NOT a diagnosis tool. Do not make clinical claims.
+
+Given the post below and the model outputs, provide a brief structured interpretation.
+
+Post:
+\"\"\"{raw_text}\"\"\"
+
+Model outputs:
+- Predicted class: {predicted_class}
+- Risk score: {risk_score:.3f}
+- Risk level: {risk_level}
+- Needs review: {needs_review}
+- Operating mode: {mode_name}
+- Suggested action baseline: {suggested_action}
+
+Return ONLY valid JSON with this schema:
+{{
+  "explanation": "2-4 sentences, plain English, concise",
+  "detected_signals": ["signal1", "signal2", "signal3"],
+  "suggested_action": "one short action label"
+}}
+
+Rules:
+- Do not claim diagnosis.
+- Focus on language cues such as hopelessness, distress, isolation, fatigue, self-harm references, uncertainty, emotional overwhelm.
+- If the text does not strongly indicate severe concern, say so.
+- Keep detected_signals short phrases.
+"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            temperature=0.2,
+            messages=[
+                {"role": "system", "content": "You are a careful assistant that returns only valid JSON."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        content = response.choices[0].message.content.strip()
+
+        # try direct JSON parse
+        parsed = json.loads(content)
+
+        explanation = parsed.get("explanation", "No explanation generated.")
+        detected_signals = parsed.get("detected_signals", [])
+        suggested_action = parsed.get("suggested_action", suggested_action)
+
+        if not isinstance(detected_signals, list):
+            detected_signals = [str(detected_signals)]
+
+        return {
+            "explanation": explanation,
+            "detected_signals": detected_signals,
+            "suggested_action": suggested_action
+        }
+
+    except Exception:
+        # fallback, no crash
+        fallback_signals = []
+        lower_text = raw_text.lower()
+        for word in ["hopeless", "empty", "tired", "alone", "give up", "can't go on", "hurt", "die", "suicide"]:
+            if word in lower_text:
+                fallback_signals.append(word)
+
+        if not fallback_signals:
+            fallback_signals = ["emotional distress cues"]
+
+        return {
+            "explanation": (
+                "The post was interpreted using the model's predicted class, risk score, and review status. "
+                "This result should be treated as a research-style triage signal rather than a diagnosis."
+            ),
+            "detected_signals": fallback_signals[:3],
+            "suggested_action": suggested_action
+        }
+
+# =========================================================
 # AUDIO / TRANSCRIPTION HELPERS
 # =========================================================
 def wav_bytes_to_audiosegment(wav_bytes: bytes) -> AudioSegment:
@@ -166,9 +274,28 @@ def transcribe_audiosegment_with_openai(audio_segment: AudioSegment, model_name:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
+def transcribe_short_wav_bytes(wav_bytes: bytes, model_name: str = "gpt-4o-mini-transcribe") -> str:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+        tmp.write(wav_bytes)
+        tmp_path = tmp.name
+
+    try:
+        with open(tmp_path, "rb") as audio_file:
+            transcript = client.audio.transcriptions.create(
+                model=model_name,
+                file=audio_file
+            )
+        return transcript.text if hasattr(transcript, "text") else str(transcript)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
 def transcribe_long_wav_bytes(wav_bytes: bytes, model_name: str = "gpt-4o-mini-transcribe", chunk_ms: int = 60_000) -> str:
     audio = wav_bytes_to_audiosegment(wav_bytes)
     chunks = split_audio_into_chunks(audio, chunk_ms=chunk_ms)
+
+    if len(chunks) == 1:
+        return transcribe_short_wav_bytes(wav_bytes, model_name=model_name)
 
     transcripts = []
     for chunk in chunks:
@@ -222,7 +349,7 @@ st.sidebar.write("**1** = SuicideWatch-related")
 # MAIN HEADER
 # =========================================================
 st.title("🧠 Mental Health Risk Signal Detector")
-st.caption("Research prototype for text-based risk signal triage with explainability and two decision modes.")
+st.caption("Research prototype for text-based risk signal triage with explainability, AI interpretation, and two decision modes.")
 
 st.markdown(
     """
@@ -235,6 +362,7 @@ It also provides:
 - a **risk level**
 - an **uncertainty score**
 - a **human-review recommendation**
+- an **AI-generated explanation layer**
 
 **Important:** This is a research prototype, not a clinical tool or diagnosis system.
 """
@@ -251,6 +379,58 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🧾 Explainability",
     "⚠️ Ethics & Safeguards"
 ])
+
+# =========================================================
+# RESULT RENDERER
+# =========================================================
+def render_result_block(raw_text, result, mode_name):
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Predicted Class", result["predicted_class"])
+    c2.metric("Risk Score", f"{result['risk_score']:.3f}")
+    c3.metric("Uncertainty", f"{result['uncertainty']:.3f}")
+    c4.metric("Risk Level", result["risk_level"])
+
+    if result["needs_review"]:
+        st.warning("This input falls into the human-review zone for the selected mode.")
+    else:
+        st.success("This input is outside the human-review zone for the selected mode.")
+
+    ai_info = generate_ai_explanation(
+        raw_text=raw_text,
+        predicted_class=result["predicted_class"],
+        risk_score=result["risk_score"],
+        risk_level=result["risk_level"],
+        needs_review=result["needs_review"],
+        mode_name=mode_name
+    )
+
+    st.markdown("### 🧠 AI Explanation")
+    st.write(ai_info["explanation"])
+
+    st.markdown("### 🔎 Detected Signals")
+    if ai_info["detected_signals"]:
+        for sig in ai_info["detected_signals"]:
+            st.write(f"- {sig}")
+    else:
+        st.write("- No clear signals extracted")
+
+    st.markdown("### ⚠️ Suggested Action")
+    st.info(ai_info["suggested_action"])
+
+    with st.expander("View cleaned text used by the model"):
+        st.write(result["cleaned_text"])
+
+    st.markdown("### Interpretation")
+    st.write(
+        f"""
+- **Mode:** {result['mode']}
+- **Threshold used:** {active_threshold}
+- **Predicted class:** {result['predicted_class']}
+- **Risk score:** {result['risk_score']:.3f}
+- **Risk level:** {result['risk_level']}
+- **Needs review:** {result['needs_review']}
+"""
+    )
 
 # =========================================================
 # TAB 1: SINGLE TEXT ANALYSIS
@@ -291,31 +471,7 @@ with tab1:
             )
             result = result_df.iloc[0]
 
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Predicted Class", result["predicted_class"])
-            c2.metric("Risk Score", f"{result['risk_score']:.3f}")
-            c3.metric("Uncertainty", f"{result['uncertainty']:.3f}")
-            c4.metric("Risk Level", result["risk_level"])
-
-            if result["needs_review"]:
-                st.warning("This text falls into the human-review zone for the selected mode.")
-            else:
-                st.success("This text is outside the human-review zone for the selected mode.")
-
-            st.markdown("### Cleaned Text Used by the Model")
-            st.write(result["cleaned_text"])
-
-            st.markdown("### Interpretation")
-            st.write(
-                f"""
-- **Mode:** {result['mode']}
-- **Threshold used:** {active_threshold}
-- **Predicted class:** {result['predicted_class']}
-- **Risk score:** {result['risk_score']:.3f}
-- **Risk level:** {result['risk_level']}
-- **Needs review:** {result['needs_review']}
-"""
-            )
+            render_result_block(sample_text, result, mode)
 
             st.session_state.prediction_log = pd.concat(
                 [st.session_state.prediction_log, result_df],
@@ -365,10 +521,9 @@ to the classifier automatically.
         if st.button("Analyze Voice"):
             try:
                 with st.spinner("Transcribing and analyzing audio..."):
-                    transcript = transcribe_long_wav_bytes(
+                    transcript = transcribe_short_wav_bytes(
                         wav_audio_data,
-                        model_name="gpt-4o-mini-transcribe",
-                        chunk_ms=15_000
+                        model_name="gpt-4o-mini-transcribe"
                     )
 
                     st.session_state.voice_transcript = transcript
@@ -382,34 +537,10 @@ to the classifier automatically.
                     )
                     result = result_df.iloc[0]
 
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Predicted Class", result["predicted_class"])
-                c2.metric("Risk Score", f"{result['risk_score']:.3f}")
-                c3.metric("Uncertainty", f"{result['uncertainty']:.3f}")
-                c4.metric("Risk Level", result["risk_level"])
+                render_result_block(transcript, result, mode)
 
-                if result["needs_review"]:
-                    st.warning("This voice input falls into the human-review zone for the selected mode.")
-                else:
-                    st.success("This voice input is outside the human-review zone for the selected mode.")
-
-                st.markdown("### Transcript")
-                st.write(transcript)
-
-                st.markdown("### Cleaned Transcript Used by the Model")
-                st.write(result["cleaned_text"])
-
-                st.markdown("### Interpretation")
-                st.write(
-                    f"""
-- **Mode:** {result['mode']}
-- **Threshold used:** {active_threshold}
-- **Predicted class:** {result['predicted_class']}
-- **Risk score:** {result['risk_score']:.3f}
-- **Risk level:** {result['risk_level']}
-- **Needs review:** {result['needs_review']}
-"""
-                )
+                with st.expander("View transcript"):
+                    st.write(transcript)
 
                 st.session_state.prediction_log = pd.concat(
                     [st.session_state.prediction_log, result_df],
@@ -418,8 +549,8 @@ to the classifier automatically.
 
             except Exception as e:
                 st.error(f"Voice analysis failed: {e}")
-                
-  # =========================================================
+
+# =========================================================
 # TAB 3: BATCH UPLOAD
 # =========================================================
 with tab3:
@@ -582,19 +713,20 @@ This system is designed as a research prototype for risk signal triage in social
 - replacing human judgment
 
 ### Safeguards Included
-- Dual operating modes for different risk tolerances
+- dual operating modes for different risk tolerances
 - uncertainty-aware review logic
 - human-review recommendation for borderline cases
 - transparent model behavior through feature inspection
+- AI-generated interpretation layer for explanation only
 
 ### Known Limitations
-- Labels may overlap semantically
+- labels may overlap semantically
 - text alone does not capture full human context
 - false positives and false negatives remain possible
 - performance depends on the training dataset and its assumptions
-- speech transcription errors may affect downstream predictions
+- AI explanations are supportive interpretations, not ground truth
 """
     )
 
 st.markdown("---")
-st.caption("Built with Streamlit, TF-IDF, Logistic Regression, browser audio recording, and OpenAI speech-to-text.")
+st.caption("Built with Streamlit, TF-IDF, Logistic Regression, browser audio recording, OpenAI speech-to-text, and AI-generated explanations.")
