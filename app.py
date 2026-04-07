@@ -148,7 +148,7 @@ def transcribe_audio_file(audio_file):
 # =========================================================
 @st.cache_resource
 def train_pipeline():
-    df = pd.read_csv("data/raw/reddit_depression_suicidewatch.csv")
+    df = pd.read_csv("reddit_depression_suicidewatch.csv")
 
     df = df[["text", "label"]].copy()
     df["text"] = df["text"].fillna("").astype(str)
