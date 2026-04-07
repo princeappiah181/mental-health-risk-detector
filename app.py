@@ -3,22 +3,20 @@
 
 # In[ ]:
 
-
+import os
 import re
 import string
+import math
+import tempfile
+from io import BytesIO
+
+import joblib
 import numpy as np
 import pandas as pd
 import streamlit as st
-
-from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import (
-    accuracy_score,
-    classification_report,
-    confusion_matrix,
-    f1_score
-)
+from openai import OpenAI
+from pydub import AudioSegment
+from st_audiorec import st_audiorec
 
 # =========================================================
 # PAGE CONFIG
@@ -35,16 +33,39 @@ st.set_page_config(
 if "prediction_log" not in st.session_state:
     st.session_state.prediction_log = pd.DataFrame(
         columns=[
-            "mode", "original_text", "cleaned_text", "predicted_class",
-            "predicted_label", "risk_score", "uncertainty",
-            "needs_review", "risk_level"
+            "mode",
+            "original_text",
+            "cleaned_text",
+            "predicted_class",
+            "predicted_label",
+            "risk_score",
+            "uncertainty",
+            "needs_review",
+            "risk_level"
         ]
     )
+
+if "voice_transcript" not in st.session_state:
+    st.session_state.voice_transcript = ""
+
+if "example_text" not in st.session_state:
+    st.session_state.example_text = ""
+
+# =========================================================
+# OPENAI CLIENT
+# =========================================================
+OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
+
+if not OPENAI_API_KEY:
+    st.error("Missing OPENAI_API_KEY. Add it in Streamlit secrets.")
+    st.stop()
+
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # =========================================================
 # TEXT CLEANING
 # =========================================================
-def clean_text(text):
+def clean_text(text: str) -> str:
     text = str(text).lower()
     text = re.sub(r"http\S+|www\S+|https\S+", " ", text)
     text = re.sub(r"@\w+", " ", text)
@@ -55,27 +76,27 @@ def clean_text(text):
 # =========================================================
 # HELPERS
 # =========================================================
-def uncertainty_score(score):
+def uncertainty_score(score: float) -> float:
     return 1 - abs(score - 0.5) * 2
 
-def risk_level_balanced(score):
+def risk_level_balanced(score: float) -> str:
     if score < 0.30:
         return "Low"
     elif score < 0.70:
         return "Moderate"
     return "High"
 
-def needs_review_balanced(score):
+def needs_review_balanced(score: float) -> bool:
     return 0.40 <= score <= 0.60
 
-def risk_level_safety(score):
+def risk_level_safety(score: float) -> str:
     if score < 0.25:
         return "Low"
     elif score < 0.60:
         return "Moderate / Review"
     return "High"
 
-def needs_review_safety(score):
+def needs_review_safety(score: float) -> bool:
     return 0.25 <= score <= 0.60
 
 def predict_scores(text_list, vectorizer, model, threshold, mode_name):
@@ -112,95 +133,65 @@ def predict_scores(text_list, vectorizer, model, threshold, mode_name):
     return pd.DataFrame(records)
 
 # =========================================================
-# TRAIN MODEL
+# AUDIO / TRANSCRIPTION HELPERS
+# =========================================================
+def wav_bytes_to_audiosegment(wav_bytes: bytes) -> AudioSegment:
+    return AudioSegment.from_file(BytesIO(wav_bytes), format="wav")
+
+def split_audio_into_chunks(audio_segment: AudioSegment, chunk_ms: int = 60_000):
+    chunks = []
+    total_ms = len(audio_segment)
+    num_chunks = math.ceil(total_ms / chunk_ms)
+
+    for i in range(num_chunks):
+        start = i * chunk_ms
+        end = min((i + 1) * chunk_ms, total_ms)
+        chunks.append(audio_segment[start:end])
+
+    return chunks
+
+def transcribe_audiosegment_with_openai(audio_segment: AudioSegment, model_name: str = "gpt-4o-mini-transcribe") -> str:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+        audio_segment.export(tmp.name, format="wav")
+        tmp_path = tmp.name
+
+    try:
+        with open(tmp_path, "rb") as audio_file:
+            transcript = client.audio.transcriptions.create(
+                model=model_name,
+                file=audio_file
+            )
+        return transcript.text if hasattr(transcript, "text") else str(transcript)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+def transcribe_long_wav_bytes(wav_bytes: bytes, model_name: str = "gpt-4o-mini-transcribe", chunk_ms: int = 60_000) -> str:
+    audio = wav_bytes_to_audiosegment(wav_bytes)
+    chunks = split_audio_into_chunks(audio, chunk_ms=chunk_ms)
+
+    transcripts = []
+    for chunk in chunks:
+        text = transcribe_audiosegment_with_openai(chunk, model_name=model_name)
+        transcripts.append(text.strip())
+
+    return " ".join(t for t in transcripts if t)
+
+# =========================================================
+# LOAD SAVED ARTIFACTS
 # =========================================================
 @st.cache_resource
-def train_pipeline():
-    df = pd.read_csv("reddit_depression_suicidewatch.csv")
-
-    df = df[["text", "label"]].copy()
-    df["text"] = df["text"].fillna("").astype(str)
-    df["clean_text"] = df["text"].apply(clean_text)
-    df = df[df["clean_text"].str.strip() != ""].reset_index(drop=True)
-
-    label_map = {
-        "depression": 0,
-        "SuicideWatch": 1
-    }
-    df["label"] = df["label"].map(label_map)
-    df = df.dropna(subset=["label"]).reset_index(drop=True)
-    df["label"] = df["label"].astype(int)
-
-    X = df["clean_text"]
-    y = df["label"]
-
-    X_train, X_temp, y_train, y_temp = train_test_split(
-        X, y, test_size=0.30, random_state=42, stratify=y
+def load_artifacts():
+    artifacts = joblib.load("artifacts/mental_health_model.joblib")
+    return (
+        artifacts["vectorizer"],
+        artifacts["model"],
+        artifacts["metrics"],
+        artifacts["top_positive"],
+        artifacts["top_negative"]
     )
 
-    X_val, X_test, y_val, y_test = train_test_split(
-        X_temp, y_temp, test_size=0.50, random_state=42, stratify=y_temp
-    )
-
-    vectorizer = TfidfVectorizer(
-        max_features=30000,
-        ngram_range=(1, 3),
-        min_df=2,
-        max_df=0.95,
-        sublinear_tf=True
-    )
-
-    X_train_tfidf = vectorizer.fit_transform(X_train)
-    X_test_tfidf = vectorizer.transform(X_test)
-
-    model = LogisticRegression(
-        max_iter=2000,
-        C=2.0,
-        class_weight="balanced",
-        solver="liblinear",
-        random_state=42
-    )
-
-    model.fit(X_train_tfidf, y_train)
-
-    threshold_balanced = 0.50
-    threshold_safety = 0.25
-
-    y_test_probs_balanced = model.predict_proba(X_test_tfidf)[:, 1]
-    y_test_pred_balanced = (y_test_probs_balanced >= threshold_balanced).astype(int)
-
-    y_test_probs_safety = model.predict_proba(X_test_tfidf)[:, 1]
-    y_test_pred_safety = (y_test_probs_safety >= threshold_safety).astype(int)
-
-    metrics = {
-        "balanced": {
-            "threshold": threshold_balanced,
-            "accuracy": accuracy_score(y_test, y_test_pred_balanced),
-            "f1_class1": f1_score(y_test, y_test_pred_balanced, pos_label=1),
-            "confusion_matrix": confusion_matrix(y_test, y_test_pred_balanced),
-            "report": classification_report(y_test, y_test_pred_balanced, output_dict=True)
-        },
-        "safety": {
-            "threshold": threshold_safety,
-            "accuracy": accuracy_score(y_test, y_test_pred_safety),
-            "f1_class1": f1_score(y_test, y_test_pred_safety, pos_label=1),
-            "confusion_matrix": confusion_matrix(y_test, y_test_pred_safety),
-            "report": classification_report(y_test, y_test_pred_safety, output_dict=True)
-        }
-    }
-
-    feature_names = vectorizer.get_feature_names_out()
-    coef = model.coef_[0]
-
-    top_positive_idx = np.argsort(coef)[-20:][::-1]
-    top_negative_idx = np.argsort(coef)[:20]
-
-    top_positive = [(feature_names[i], float(coef[i])) for i in top_positive_idx]
-    top_negative = [(feature_names[i], float(coef[i])) for i in top_negative_idx]
-
-    return vectorizer, model, metrics, top_positive, top_negative
-
-vectorizer, model, metrics, top_positive, top_negative = train_pipeline()
+vectorizer, model, metrics, top_positive, top_negative = load_artifacts()
 
 # =========================================================
 # SIDEBAR
@@ -214,14 +205,12 @@ mode = st.sidebar.radio(
 if mode == "Balanced Mode":
     active_threshold = metrics["balanced"]["threshold"]
     st.sidebar.info(
-        "Balanced Mode uses threshold = 0.50.\n\n"
-        "Best for standard evaluation and balanced performance."
+        "Balanced Mode uses threshold = 0.50.\n\nBest for standard evaluation and balanced performance."
     )
 else:
     active_threshold = metrics["safety"]["threshold"]
     st.sidebar.warning(
-        "Safety Mode uses threshold = 0.25.\n\n"
-        "Best for high recall and triage-style review."
+        "Safety Mode uses threshold = 0.25.\n\nBest for high recall and triage-style review."
     )
 
 st.sidebar.markdown("---")
@@ -254,8 +243,9 @@ It also provides:
 # =========================================================
 # TABS
 # =========================================================
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔎 Analyze Text",
+    "🎤 Voice Input",
     "📂 Batch Upload",
     "📊 Model Performance",
     "🧾 Explainability",
@@ -281,12 +271,12 @@ with tab1:
 
     with col2:
         if st.button("Load Example"):
-            st.session_state["example_text"] = (
+            st.session_state.example_text = (
                 "I feel tired of everything and I do not know how much longer I can keep going."
             )
 
-    if "example_text" in st.session_state and not sample_text:
-        sample_text = st.session_state["example_text"]
+    if st.session_state.example_text and not sample_text:
+        sample_text = st.session_state.example_text
 
     if run_btn:
         if not sample_text.strip():
@@ -346,13 +336,104 @@ with tab1:
         if st.button("Clear Prediction Log"):
             st.session_state.prediction_log = st.session_state.prediction_log.iloc[0:0]
             st.success("Prediction log cleared.")
+            st.rerun()
     else:
         st.info("No predictions logged yet.")
 
 # =========================================================
-# TAB 2: BATCH UPLOAD
-# =========================================================               
+# TAB 2: VOICE INPUT
+# =========================================================
 with tab2:
+    st.subheader("Voice Input")
+
+    st.markdown(
+        """
+Record speech directly in the browser, convert it to text, review the transcript,
+and then analyze it with the model.
+
+Long recordings are automatically split into smaller chunks before transcription.
+"""
+    )
+
+    transcription_model = st.selectbox(
+        "Transcription model",
+        options=["gpt-4o-mini-transcribe", "gpt-4o-transcribe"],
+        index=0
+    )
+
+    wav_audio_data = st_audiorec()
+
+    if wav_audio_data is not None:
+        st.audio(wav_audio_data, format="audio/wav")
+
+        if st.button("Transcribe Recording"):
+            try:
+                with st.spinner("Transcribing audio... please wait."):
+                    transcript = transcribe_long_wav_bytes(
+                        wav_audio_data,
+                        model_name=transcription_model,
+                        chunk_ms=60_000
+                    )
+                st.session_state.voice_transcript = transcript
+                st.success("Transcription completed.")
+            except Exception as e:
+                st.error(f"Transcription failed: {e}")
+
+    transcript_text = st.text_area(
+        "Transcript (editable before analysis)",
+        value=st.session_state.voice_transcript,
+        height=180,
+        key="voice_transcript_box"
+    )
+
+    if st.button("Analyze Transcript"):
+        if not transcript_text.strip():
+            st.error("Please record audio or enter transcript text first.")
+        else:
+            result_df = predict_scores(
+                [transcript_text],
+                vectorizer,
+                model,
+                active_threshold,
+                mode
+            )
+            result = result_df.iloc[0]
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Predicted Class", result["predicted_class"])
+            c2.metric("Risk Score", f"{result['risk_score']:.3f}")
+            c3.metric("Uncertainty", f"{result['uncertainty']:.3f}")
+            c4.metric("Risk Level", result["risk_level"])
+
+            if result["needs_review"]:
+                st.warning("This transcript falls into the human-review zone for the selected mode.")
+            else:
+                st.success("This transcript is outside the human-review zone for the selected mode.")
+
+            st.markdown("### Cleaned Transcript Used by the Model")
+            st.write(result["cleaned_text"])
+
+            st.markdown("### Interpretation")
+            st.write(
+                f"""
+- **Mode:** {result['mode']}
+- **Threshold used:** {active_threshold}
+- **Predicted class:** {result['predicted_class']}
+- **Risk score:** {result['risk_score']:.3f}
+- **Risk level:** {result['risk_level']}
+- **Needs review:** {result['needs_review']}
+"""
+            )
+
+            st.session_state.prediction_log = pd.concat(
+                [st.session_state.prediction_log, result_df],
+                ignore_index=True
+            )
+
+# =========================================================
+# TAB 3: BATCH UPLOAD
+# =========================================================
+with tab3:
     st.subheader("Batch Score Multiple Posts")
 
     st.markdown(
@@ -419,9 +500,9 @@ Recommended column name: **text**
                 st.bar_chart(chart_df["count"])
 
 # =========================================================
-# TAB 3: MODEL PERFORMANCE
+# TAB 4: MODEL PERFORMANCE
 # =========================================================
-with tab3:
+with tab4:
     st.subheader("Performance Summary")
 
     summary_df = pd.DataFrame({
@@ -473,9 +554,9 @@ with tab3:
         st.dataframe(cm_safe, use_container_width=True)
 
 # =========================================================
-# TAB 4: EXPLAINABILITY
+# TAB 5: EXPLAINABILITY
 # =========================================================
-with tab4:
+with tab5:
     st.subheader("Top Predictive Words / Phrases")
 
     col1, col2 = st.columns(2)
@@ -495,9 +576,9 @@ with tab4:
     )
 
 # =========================================================
-# TAB 5: ETHICS
+# TAB 6: ETHICS
 # =========================================================
-with tab5:
+with tab6:
     st.subheader("Ethical Safeguards and Responsible Use")
 
     st.markdown(
@@ -512,19 +593,19 @@ This system is designed as a research prototype for risk signal triage in social
 - replacing human judgment
 
 ### Safeguards Included
-- dual operating modes for different risk tolerances
+- Dual operating modes for different risk tolerances
 - uncertainty-aware review logic
 - human-review recommendation for borderline cases
 - transparent model behavior through feature inspection
 
 ### Known Limitations
-- labels may overlap semantically
+- Labels may overlap semantically
 - text alone does not capture full human context
 - false positives and false negatives remain possible
 - performance depends on the training dataset and its assumptions
+- speech transcription errors may affect downstream predictions
 """
     )
 
 st.markdown("---")
-st.caption("Built with Streamlit, TF-IDF, and Logistic Regression.")
-
+st.caption("Built with Streamlit, TF-IDF, Logistic Regression, browser audio recording, and OpenAI speech-to-text.")
