@@ -1,136 +1,131 @@
-🧠 Mental Health Risk Signal Detector<br>
+🧠 Explainable AI for Mental Health Risk Detection (Text & Speech)
 
-A Streamlit-based NLP risk signal detection system that analyzes social media-style text and identifies potential mental health risk signals using machine learning.<br>
-
-🔗 Live App: https://mental-health-risk-detector-b5skfn3gxfdrimhz5f8hrr.streamlit.app/<br>
-
+An AI-powered application that analyzes text and voice inputs to identify potential signals of emotional distress and provide clear, interpretable risk insights.
 
 ⸻
 
-🚨 Problem<br>
+🚀 Live Demo
 
-Individuals often express distress signals online before intervention.<br>
-However, detecting these signals is challenging due to:<br>
-    •    subtle language patterns<br>
-    •    overlapping emotional expressions<br>
-    •    noisy and ambiguous labels<br>
-
-This project builds a triage-style system that helps flag potential high-risk posts for human review, rather than attempting clinical diagnosis.<br>
+👉 https://mental-health-risk-detector-b5skfn3gxfdrimhz5f8hrr.streamlit.app/
 
 ⸻
 
-💡 Solution<br>
+🎯 Overview
 
-This system uses:<br>
-    •    TF-IDF + Logistic Regression<br>
-    •    Probability-based risk scoring<br>
-    •    Threshold optimization for safety-sensitive detection<br>
-    •    Human-in-the-loop review mechanism<br>
+This project demonstrates how machine learning and AI can be combined to move from raw predictions to interpretable, human-centered decision support.
 
-It provides:<br>
-    •    predicted class<br>
-    •    risk score (0–1)<br>
-    •    uncertainty estimate<br>
-    •    review recommendation<br>
+The system analyzes user input and classifies it into:
+    •    🟢 Neither / Other (no clear concern)
+    •    🟡 Depression-related signals
+    •    🔴 Suicide-related signals
 
-⸻
-
-⚙️ System Design<br>
-
-Two Operating Modes<br>
-
-1. Balanced Mode (Threshold = 0.50)<br>
-    •    Optimized for overall performance<br>
-    •    Accuracy ≈ 70%<br>
-    •    Balanced precision and recall<br>
-
-2. Safety Mode (Threshold = 0.25)<br>
-    •    Optimized for high recall (≈ 0.95)<br>
-    •    Minimizes missed high-risk cases<br>
-    •    Accepts more false positives (reviewed by humans)<br>
+For each input, the system provides:
+    •    Risk score
+    •    Risk level
+    •    Uncertainty (confidence)
+    •    Human-review recommendation
+    •    AI-generated explanation
 
 ⸻
 
-📊 Key Insight<br>
+🧠 Key Features
 
-Lowering the decision threshold significantly improves detection of high-risk signals:<br>
+🔎 Single Input Analysis
+    •    Analyze individual text inputs
+    •    Get real-time predictions and explanations
 
-Recall increased to ~0.95 for high-risk posts, reducing missed cases at the cost of increased false positives.<br>
+🎤 Voice Input
+    •    Record speech directly in the browser
+    •    Automatic speech-to-text transcription
+    •    Instant analysis of spoken input
 
-This reflects real-world risk detection systems, where missing a critical case is more costly than raising an alert.<br>
+📂 Batch Processing
+    •    Upload multiple inputs (CSV)
+    •    Analyze all records at once
+    •    Download results
+    •    View risk distribution
 
-⸻
+🧠 AI Explanation Layer
+    •    Converts model outputs into plain English explanations
+    •    Highlights detected emotional signals
+    •    Suggests appropriate follow-up action
 
-🧾 Features<br>
-
-🔎 Single Text Analysis<br>
-    •    Real-time prediction<br>
-    •    Risk score and classification<br>
-    •    Uncertainty and review flag<br>
-
-📂 Batch Upload<br>
-    •    Upload CSV with multiple posts<br>
-    •    Score all entries at once<br>
-    •    Download results<br>
-
-📊 Visualization<br>
-    •    Risk distribution (Low / Moderate / High)<br>
-    •    Confusion matrix comparison<br>
-
-🧠 Explainability<br>
-    •    Top predictive words influencing decisions<br>
+⚙️ Guardrail System (Important)
+    •    Filters out non-mental-health text
+    •    Reduces false positives
+    •    Introduces a Neither / Other category
 
 ⸻
 
-📁 Input Format (Batch Mode)<br>
+🧪 Modeling Approach
+    •    Feature Engineering: TF-IDF (n-grams)
+    •    Model: Logistic Regression
+    •    Classes:
+    •    Depression-related
+    •    Suicide-related
+    •    Enhancement: Rule-based guardrail for “Neither / Other”
 
-text<br>
-I feel tired of everything<br>
-I do not know how much longer I can keep going<br>
-
-🧪 Tech Stack<br>
-    •    Python<br>
-    •    scikit-learn (TF-IDF + Logistic Regression)<br>
-    •    pandas / numpy (data processing)<br>
-    •    Streamlit (interactive web app)<br>
-
-⸻
-
-⚠️ Ethical Considerations<br>
-
-This project is a research prototype for risk signal detection, not a clinical system.<br>
-
-Not intended for:<br>
-    •    diagnosis<br>
-    •    treatment decisions<br>
-    •    automated intervention<br>
-
-Safeguards implemented:<br>
-    •    uncertainty-based review mechanism<br>
-    •    human-in-the-loop design<br>
-    •    transparent model behavior and outputs<br>
+Prediction Modes:
+    •    Balanced Mode → Standard classification
+    •    Safety Mode → Higher sensitivity for risk detection
 
 ⸻
 
-📉 Limitations<br>
-    •    Label ambiguity (depression vs SuicideWatch overlap)<br>
-    •    Text-only analysis (no user context or history)<br>
-    •    False positives and false negatives remain<br>
-    •    Model performance depends on dataset assumptions<br>
+🧠 AI Integration
+
+This project combines:
+    •    Traditional Machine Learning (classification)
+    •    Explainable AI (interpretation layer)
+    •    Speech-to-Text (voice input)
+    •    Generative AI (LLM-based explanations and summaries)
 
 ⸻
 
-🚀 Future Improvements<br>
-    •    Transformer-based models (e.g., BERT)<br>
-    •    Temporal modeling of user activity<br>
-    •    More robust uncertainty estimation<br>
-    •    Pre-trained model deployment for faster inference<br>
+🧰 Tech Stack
+    •    Python
+    •    Scikit-learn
+    •    Pandas / NumPy
+    •    Streamlit
+    •    OpenAI API (speech + explanations)
 
-▶️ Run Locally<br>
+⸻
 
-pip install -r requirements.txt<br>
-streamlit run app.py<br>
+⚠️ Responsible Use
 
-👤 Author<br>
-Prince Appiah<br>
-PhD Data Science<br>
+This is a research and decision-support tool, not a clinical system.
+
+It is not intended for:
+    •    diagnosis
+    •    treatment decisions
+    •    automated interventions
+
+It is designed to:
+    •    support awareness
+    •    assist human review
+    •    demonstrate responsible AI design
+
+⸻
+
+📉 Limitations
+    •    Binary training data (Depression vs SuicideWatch)
+    •    “Neither / Other” handled via rule-based guardrails
+    •    Text-only analysis (no personal context)
+    •    Possible false positives and false negatives
+    •    AI explanations are supportive, not ground truth
+
+⸻
+
+🚀 Future Improvements
+    •    Train a true 3-class model (add “Neither / Other” data)
+    •    Incorporate transformer-based models (e.g., BERT)
+    •    Improve uncertainty calibration
+    •    Real-time streaming transcription
+    •    User-level temporal analysis
+
+⸻
+
+👤 Author
+
+Prince Appiah
+Ph.D. Data Science
+Machine Learning | NLP | Explainable AI | Applied Analytics
