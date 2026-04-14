@@ -582,7 +582,7 @@ st.sidebar.write("**1** = SuicideWatch-related")
 st.title("🧠 Explainable AI System for Mental Health Risk Detection")
 
 st.caption(
-    "AI-powered system for detecting and interpreting emotional distress signals from text and speech."
+    "AI-powered system for detecting and interpreting emotional distress signals from text and speech, providing risk scoring, uncertainty awareness, and clear, explainable insights to support informed decision-making."
 )
 
 st.markdown(
