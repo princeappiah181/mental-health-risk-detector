@@ -579,10 +579,16 @@ st.sidebar.write("**1** = SuicideWatch-related")
 # =========================================================
 # MAIN HEADER
 # =========================================================
-st.title("🧠 Explainable AI System for Mental Health Risk Detection")
+st.title("🧠 Explainable AI System for Mental Health Risk Detection from Text and Speech")
 
-st.caption(
-    "AI-powered system for detecting and interpreting emotional distress signals from text and speech, providing risk scoring, uncertainty awareness, and clear, explainable insights to support informed decision-making."
+st.markdown(
+    """
+<p style='font-size:19px; line-height:1.7;'>
+AI-powered system for detecting and interpreting emotional distress signals from text and speech, 
+providing risk scoring, uncertainty awareness, and clear, explainable insights to support informed decision-making.
+</p>
+""",
+    unsafe_allow_html=True
 )
 
 st.markdown(
