@@ -579,8 +579,7 @@ st.sidebar.write("**1** = SuicideWatch-related")
 # =========================================================
 # MAIN HEADER
 # =========================================================
-st.title("🧠 Explainable AI Risk Signal Detection System 
-")
+st.title("🧠 Explainable AI Risk Signal Detection System ")
 
 st.markdown(
     """
