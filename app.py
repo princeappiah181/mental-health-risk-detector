@@ -21,7 +21,7 @@ from st_audiorec import st_audiorec
 # PAGE CONFIG
 # =========================================================
 st.set_page_config(
-    page_title="Mental Health Risk Signal Detector",
+    page_title="Explainable AI Risk Signal Detection System",
     page_icon="🧠",
     layout="wide"
 )
@@ -579,7 +579,8 @@ st.sidebar.write("**1** = SuicideWatch-related")
 # =========================================================
 # MAIN HEADER
 # =========================================================
-st.title("🧠 Explainable AI for Mental Health Risk Detection from Text and Speech")
+st.title("🧠 Explainable AI Risk Signal Detection System 
+")
 
 st.markdown(
     """
