@@ -580,46 +580,57 @@ st.sidebar.write("**1** = SuicideWatch-related")
 # MAIN HEADER
 # =========================================================
 st.title("🧠 Mental Health Risk Signal Detector")
+
 st.caption(
-    "An AI-powered system that analyzes text and voice to identify early signals of emotional distress and support risk-aware decision making."
+    "AI-powered system for detecting and interpreting emotional distress signals from text and speech."
 )
 
 st.markdown(
     """
-This tool classifies input into:
-- **No concern (Neither / Other)**
-- **Depression-related signals**
-- **Suicide-related signals**
+### 🔍 What this app does
 
-Each analysis includes:
-- A **risk score**
-- A **risk level**
-- An **uncertainty-aware score**
-- A **review recommendation**
-- An **AI-generated explanation**
+This tool analyzes text or voice input and classifies it into:
 
-**Key Capabilities**
-- **Multi-modal input:** supports both text and voice.
-- **Real-time analysis:** instant classification and feedback.
-- **Explainable AI:** translates model output into human-understandable insights.
-- **False-positive control:** includes a Neither / Other guardrail to filter non-relevant language.
-- **Batch intelligence:** summarizes patterns across multiple messages for triage-style workflows.
+- **🟢 No concern (Neither / Other)**
+- **🟡 Depression-related signals**
+- **🔴 SuicideWatch-related signals**
 
-**Why this matters**
+Each analysis provides:
+- **Risk score**
+- **Risk level**
+- **Uncertainty (confidence)**
+- **Review recommendation**
+- **AI-generated explanation in plain English**
+
+---
+
+### 🚀 Key Capabilities
+
+- **Multi-modal input:** Supports both text and voice  
+- **Real-time analysis:** Instant classification and feedback  
+- **Explainable AI:** Converts model outputs into human-understandable insights  
+- **False-positive control:** Uses a *Neither / Other* guardrail to filter non-relevant language  
+- **Batch intelligence:** Summarizes patterns across multiple inputs  
+
+---
+
+### 💡 Why this matters
 
 People often express distress in subtle ways. This system demonstrates how AI can:
-- Detect early warning signals in language
-- Reduce missed high-risk cases
-- Provide interpretable outputs for human review
-- Bridge the gap between raw predictions and actionable insights
 
-**⚠️ Responsible Use**
+- Detect early warning signals in language  
+- Reduce missed high-risk cases  
+- Provide interpretable outputs for human review  
+- Bridge the gap between raw predictions and actionable insights  
 
-This is a research and decision-support tool, not a clinical system.  
-It is designed to assist awareness and human judgment, not replace professional evaluation.
+---
+
+### ⚠️ Responsible Use
+
+This is a **research and decision-support tool**, not a clinical system.  
+It is designed to **assist awareness and human judgment**, not replace professional evaluation.
 """
 )
-
 # =========================================================
 # TABS
 # =========================================================
