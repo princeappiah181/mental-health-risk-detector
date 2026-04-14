@@ -6,7 +6,7 @@ An AI-powered application that analyzes text and voice inputs to identify potent
 
 🚀 Live Demo<br>
 
-👉 https://mental-health-risk-detector-b5skfn3gxfdrimhz5f8hrr.streamlit.app/<br>
+👉 hhttps://explainable-ai-risk-detection.streamlit.app/<br>
 
 ⸻
 
