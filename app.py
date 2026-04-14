@@ -581,26 +581,45 @@ st.sidebar.write("**1** = SuicideWatch-related")
 # =========================================================
 st.title("🧠 Mental Health Risk Signal Detector")
 st.caption(
-    "Research prototype for text-based risk signal triage with explainability, AI interpretation, "
-    "a Neither/Other guardrail, and two decision modes."
+    "An AI-powered system that analyzes text and voice to identify early signals of emotional distress and support risk-aware decision making."
 )
 
 st.markdown(
     """
-This app uses a **TF-IDF + Logistic Regression** pipeline, plus a **Neither / Other guardrail**,
-to classify text into:
-- **Neither / Other**
-- **Depression-related**
-- **SuicideWatch-related**
+This tool classifies input into:
+- ** No concern (Neither / Other)**
+- **Depression-related signals**
+- **Suicide-related signals**
 
-It also provides:
-- a **risk score**
-- a **risk level**
-- an **uncertainty score**
-- a **human-review recommendation**
-- an **AI-generated explanation layer**
+Each analysis includes:
+- A **risk score**
+- A **risk level**
+- An **uncertainty-aware score**
+- A **review recommendation**
+- An **AI-generated explanation**
 
-**Important:** This is a research prototype, not a clinical tool or diagnosis system.
+
+**Key Capabilities**
+    - **Multi-modal input: supports both text and voice.**
+    -  **Real-time analysis: instant classification and feedback.**
+    -  **Explainable AI: translates model output into human-understandable insights.**
+    -  **False-positive control: includes a Neither / Other guardrail to filter non-relevant language.**
+    -  **Batch intelligence: summarizes patterns across multiple messages for triage-style workflows.**
+
+
+**Why this matters**
+
+People often express distress in subtle ways. This system demonstrates how AI can:
+    -   Detect early warning signals in language
+    -    Reduce missed high-risk cases
+    -   Provide interpretable outputs for human review
+    -    Bridge the gap between raw predictions and actionable insights
+
+
+**⚠️ Responsible Use**
+
+This is a research and decision-support tool, not a clinical system.
+It is designed to assist awareness and human judgment, not replace professional evaluation.
 """
 )
 
@@ -967,25 +986,25 @@ with tab6:
 This system is designed as a research prototype for risk signal triage in social-media-like text.
 
 ### Not Intended For
-- clinical diagnosis
-- psychiatric evaluation
-- automated intervention
-- replacing human judgment
+- Clinical diagnosis
+- Psychiatric evaluation
+- Automated intervention
+- Replacing human judgment
 
 ### Safeguards Included
-- dual operating modes for different risk tolerances
-- uncertainty-aware review logic
+- Dual operating modes for different risk tolerances
+- Uncertainty-aware review logic
 - Neither / Other guardrail for non-mental-health text
-- human-review recommendation for borderline cases
-- transparent model behavior through feature inspection
+- Human-review recommendation for borderline cases
+- Transparent model behavior through feature inspection
 - AI-generated interpretation layer for explanation only
 
 ### Known Limitations
-- labels may overlap semantically
-- text alone does not capture full human context
-- false positives and false negatives remain possible
-- the Neither / Other category is currently rule-assisted, not learned from a dedicated third class
-- performance depends on the training dataset and its assumptions
+- Labels may overlap semantically
+- Text alone does not capture full human context
+- False positives and false negatives remain possible
+- The Neither / Other category is currently rule-assisted, not learned from a dedicated third class
+- Performance depends on the training dataset and its assumptions
 - AI explanations are supportive interpretations, not ground truth
 """
     )
