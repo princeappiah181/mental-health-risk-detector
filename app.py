@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
-
 import os
 import re
 import string
@@ -42,7 +40,8 @@ if "prediction_log" not in st.session_state:
             "risk_score",
             "uncertainty",
             "needs_review",
-            "risk_level"
+            "risk_level",
+            "guardrail_reason",
         ]
     )
 
@@ -73,6 +72,87 @@ def clean_text(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     text = text.translate(str.maketrans("", "", string.punctuation))
     return text
+
+# =========================================================
+# NEITHER / OTHER GUARDRAIL
+# =========================================================
+def detect_neither_other(text: str):
+    """
+    Returns:
+    {
+        "is_neither": bool,
+        "label": str | None,
+        "reason": str | None
+    }
+    """
+    text_l = clean_text(text)
+
+    exact_non_mh_phrases = {
+        "fuck around and find out",
+        "fafo",
+        "lol",
+        "lmao",
+        "good game",
+        "what a game",
+        "lets go",
+        "let's go",
+        "he is cooked",
+        "she is cooked",
+        "wtf",
+        "bruh",
+    }
+
+    mh_cues = [
+        "depressed", "depression", "suicidal", "suicide",
+        "want to die", "kill myself", "end my life",
+        "hurt myself", "self harm", "selfharm",
+        "hopeless", "empty", "worthless", "alone",
+        "cant go on", "cannot go on", "give up on life",
+        "tired of life", "dont want to live", "do not want to live",
+        "nobody cares", "no reason to live", "i want to disappear",
+        "i hate my life", "i hate myself", "end it all",
+    ]
+
+    softer_distress_cues = [
+        "anxious", "anxiety", "panic", "overwhelmed",
+        "exhausted", "burned out", "burnt out",
+        "sad", "crying", "lonely", "miserable",
+        "stressed", "stress", "ashamed", "guilty",
+    ]
+
+    aggressive_markers = [
+        "fuck", "fucked", "wtf", "find out", "idiot",
+        "stupid", "shut up", "fight me", "come at me",
+    ]
+
+    if text_l in exact_non_mh_phrases:
+        return {
+            "is_neither": True,
+            "label": "Neither / Other",
+            "reason": "Common slang or non-mental-health phrase detected without clear depression or self-harm cues."
+        }
+
+    if len(text_l.split()) <= 6:
+        if not any(cue in text_l for cue in mh_cues + softer_distress_cues):
+            return {
+                "is_neither": True,
+                "label": "Neither / Other",
+                "reason": "Short text with no clear mental-health-related cues."
+            }
+
+    if any(marker in text_l for marker in aggressive_markers):
+        if not any(cue in text_l for cue in mh_cues + softer_distress_cues):
+            return {
+                "is_neither": True,
+                "label": "Neither / Other",
+                "reason": "Aggressive or confrontational language detected without clear distress or self-harm signals."
+            }
+
+    return {
+        "is_neither": False,
+        "label": None,
+        "reason": None
+    }
 
 # =========================================================
 # HELPERS
@@ -128,15 +208,48 @@ def predict_scores(text_list, vectorizer, model, threshold, mode_name):
             "risk_score": float(prob),
             "uncertainty": float(unc),
             "needs_review": bool(review),
-            "risk_level": level
+            "risk_level": level,
+            "guardrail_reason": "",
         })
+
+    return pd.DataFrame(records)
+
+def predict_with_guardrail(text_list, vectorizer, model, threshold, mode_name):
+    """
+    First applies the Neither / Other guardrail.
+    If the text is relevant, falls back to the binary classifier.
+    """
+    records = []
+
+    for text in text_list:
+        guardrail = detect_neither_other(text)
+
+        if guardrail["is_neither"]:
+            cleaned = clean_text(text)
+            records.append({
+                "mode": mode_name,
+                "original_text": text,
+                "cleaned_text": cleaned,
+                "predicted_class": "Neither / Other",
+                "predicted_label": -1,
+                "risk_score": 0.05,
+                "uncertainty": 0.10,
+                "needs_review": False,
+                "risk_level": "Low",
+                "guardrail_reason": guardrail["reason"],
+            })
+        else:
+            pred_df = predict_scores([text], vectorizer, model, threshold, mode_name).copy()
+            records.append(pred_df.iloc[0].to_dict())
 
     return pd.DataFrame(records)
 
 # =========================================================
 # AI EXPLANATION LAYER
 # =========================================================
-def build_action_label(risk_level: str, needs_review: bool) -> str:
+def build_action_label(risk_level: str, needs_review: bool, predicted_class: str = "") -> str:
+    if predicted_class == "Neither / Other":
+        return "No mental-health follow-up indicated"
     if risk_level == "High":
         return "Urgent review recommended"
     if needs_review:
@@ -153,7 +266,7 @@ def generate_ai_explanation(
     needs_review: bool,
     mode_name: str
 ):
-    suggested_action = build_action_label(risk_level, needs_review)
+    suggested_action = build_action_label(risk_level, needs_review, predicted_class)
 
     prompt = f"""
 You are assisting with a research prototype for mental health risk signal triage.
@@ -181,6 +294,8 @@ Return ONLY valid JSON with this schema:
 
 Rules:
 - Do not claim diagnosis.
+- If the text looks like slang, aggression, humor, or non-mental-health language, say that clearly.
+- If the predicted class is "Neither / Other", explain that the text does not show clear depression or suicide-related cues.
 - Focus on language cues such as hopelessness, distress, isolation, fatigue, self-harm references, uncertainty, emotional overwhelm.
 - If the text does not strongly indicate severe concern, say so.
 - Keep detected_signals short phrases.
@@ -192,8 +307,8 @@ Rules:
             temperature=0.2,
             messages=[
                 {"role": "system", "content": "You are a careful assistant that returns only valid JSON."},
-                {"role": "user", "content": prompt}
-            ]
+                {"role": "user", "content": prompt},
+            ],
         )
 
         content = response.choices[0].message.content.strip()
@@ -209,7 +324,7 @@ Rules:
         return {
             "explanation": explanation,
             "detected_signals": detected_signals,
-            "suggested_action": suggested_action
+            "suggested_action": suggested_action,
         }
 
     except Exception:
@@ -219,29 +334,38 @@ Rules:
             if word in lower_text:
                 fallback_signals.append(word)
 
-        if not fallback_signals:
-            fallback_signals = ["emotional distress cues"]
-
-        return {
-            "explanation": (
+        if predicted_class == "Neither / Other":
+            fallback_signals = ["non-mental-health language"]
+            fallback_explanation = (
+                "The input appears to be slang, confrontational language, or otherwise outside clear depression or suicide-related cues. "
+                "It was therefore labeled as Neither / Other."
+            )
+        else:
+            if not fallback_signals:
+                fallback_signals = ["emotional distress cues"]
+            fallback_explanation = (
                 "The post was interpreted using the model's predicted class, risk score, and review status. "
                 "This result should be treated as a research-style triage signal rather than a diagnosis."
-            ),
+            )
+
+        return {
+            "explanation": fallback_explanation,
             "detected_signals": fallback_signals[:3],
-            "suggested_action": suggested_action
+            "suggested_action": suggested_action,
         }
 
 def generate_batch_ai_summary(final_batch: pd.DataFrame):
     try:
         high_count = int((final_batch["risk_level"] == "High").sum())
         review_count = int(final_batch["needs_review"].sum())
+        neither_count = int((final_batch["predicted_class"] == "Neither / Other").sum())
         total_count = int(len(final_batch))
 
         sample_rows = final_batch.head(20).copy()
 
         example_lines = []
         for _, row in sample_rows.iterrows():
-            raw_text = str(row.get("text", ""))[:300]
+            raw_text = str(row.get("text", row.get("original_text", "")))[:300]
             example_lines.append(
                 f"- Text: {raw_text}\n"
                 f"  Predicted class: {row.get('predicted_class', '')}\n"
@@ -260,6 +384,7 @@ Below is a batch of analyzed posts.
 
 Batch stats:
 - Total posts: {total_count}
+- Neither / Other count: {neither_count}
 - High risk count: {high_count}
 - Needs review count: {review_count}
 
@@ -275,6 +400,7 @@ Return ONLY valid JSON with this schema:
 
 Rules:
 - Keep the language non-clinical
+- Mention if many inputs appear unrelated to mental-health signals
 - Focus on patterns such as hopelessness, emotional distress, fatigue, uncertainty, isolation, self-harm language
 - Do not overstate certainty
 """
@@ -284,8 +410,8 @@ Rules:
             temperature=0.2,
             messages=[
                 {"role": "system", "content": "You are a careful assistant that returns only valid JSON."},
-                {"role": "user", "content": prompt}
-            ]
+                {"role": "user", "content": prompt},
+            ],
         )
 
         content = response.choices[0].message.content.strip()
@@ -294,25 +420,25 @@ Rules:
         return {
             "summary": parsed.get("summary", "No summary generated."),
             "dominant_signals": parsed.get("dominant_signals", []),
-            "follow_up_focus": parsed.get("follow_up_focus", "No follow-up focus generated.")
+            "follow_up_focus": parsed.get("follow_up_focus", "No follow-up focus generated."),
         }
 
     except Exception:
         high_count = int((final_batch["risk_level"] == "High").sum())
         review_count = int(final_batch["needs_review"].sum())
+        neither_count = int((final_batch["predicted_class"] == "Neither / Other").sum())
         total_count = int(len(final_batch))
 
         return {
             "summary": (
-                f"This batch contains {total_count} posts, with {high_count} classified as high risk "
-                f"and {review_count} flagged for review. The outputs suggest a mix of moderate-to-high concern "
-                f"content that may warrant closer inspection."
+                f"This batch contains {total_count} posts, with {neither_count} labeled as Neither / Other, "
+                f"{high_count} classified as high risk, and {review_count} flagged for review."
             ),
             "dominant_signals": ["emotional distress", "hopelessness", "review-needed language"],
             "follow_up_focus": (
                 "Prioritize posts classified as High and then examine posts flagged for review. "
-                "Look for repeated patterns of hopelessness, overwhelm, or self-harm-related language."
-            )
+                "Separate clearly unrelated/slang content from genuine distress-related language."
+            ),
         }
 
 # =========================================================
@@ -333,7 +459,10 @@ def split_audio_into_chunks(audio_segment: AudioSegment, chunk_ms: int = 60_000)
 
     return chunks
 
-def transcribe_audiosegment_with_openai(audio_segment: AudioSegment, model_name: str = "gpt-4o-mini-transcribe") -> str:
+def transcribe_audiosegment_with_openai(
+    audio_segment: AudioSegment,
+    model_name: str = "gpt-4o-mini-transcribe",
+) -> str:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
         audio_segment.export(tmp.name, format="wav")
         tmp_path = tmp.name
@@ -342,14 +471,17 @@ def transcribe_audiosegment_with_openai(audio_segment: AudioSegment, model_name:
         with open(tmp_path, "rb") as audio_file:
             transcript = client.audio.transcriptions.create(
                 model=model_name,
-                file=audio_file
+                file=audio_file,
             )
         return transcript.text if hasattr(transcript, "text") else str(transcript)
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-def transcribe_short_wav_bytes(wav_bytes: bytes, model_name: str = "gpt-4o-mini-transcribe") -> str:
+def transcribe_short_wav_bytes(
+    wav_bytes: bytes,
+    model_name: str = "gpt-4o-mini-transcribe",
+) -> str:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
         tmp.write(wav_bytes)
         tmp_path = tmp.name
@@ -358,14 +490,18 @@ def transcribe_short_wav_bytes(wav_bytes: bytes, model_name: str = "gpt-4o-mini-
         with open(tmp_path, "rb") as audio_file:
             transcript = client.audio.transcriptions.create(
                 model=model_name,
-                file=audio_file
+                file=audio_file,
             )
         return transcript.text if hasattr(transcript, "text") else str(transcript)
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-def transcribe_long_wav_bytes(wav_bytes: bytes, model_name: str = "gpt-4o-mini-transcribe", chunk_ms: int = 60_000) -> str:
+def transcribe_long_wav_bytes(
+    wav_bytes: bytes,
+    model_name: str = "gpt-4o-mini-transcribe",
+    chunk_ms: int = 60_000,
+) -> str:
     audio = wav_bytes_to_audiosegment(wav_bytes)
     chunks = split_audio_into_chunks(audio, chunk_ms=chunk_ms)
 
@@ -390,7 +526,7 @@ def load_artifacts():
         artifacts["model"],
         artifacts["metrics"],
         artifacts["top_positive"],
-        artifacts["top_negative"]
+        artifacts["top_negative"],
     )
 
 vectorizer, model, metrics, top_positive, top_negative = load_artifacts()
@@ -401,7 +537,7 @@ vectorizer, model, metrics, top_positive, top_negative = load_artifacts()
 st.sidebar.title("⚙️ Prediction Mode")
 mode = st.sidebar.radio(
     "Choose system mode",
-    ["Balanced Mode", "Safety Mode"]
+    ["Balanced Mode", "Safety Mode"],
 )
 
 if mode == "Balanced Mode":
@@ -417,6 +553,7 @@ else:
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("About the labels")
+st.sidebar.write("**-1** = Neither / Other")
 st.sidebar.write("**0** = Depression-related")
 st.sidebar.write("**1** = SuicideWatch-related")
 
@@ -424,11 +561,16 @@ st.sidebar.write("**1** = SuicideWatch-related")
 # MAIN HEADER
 # =========================================================
 st.title("🧠 Mental Health Risk Signal Detector")
-st.caption("Research prototype for text-based risk signal triage with explainability, AI interpretation, and two decision modes.")
+st.caption(
+    "Research prototype for text-based risk signal triage with explainability, AI interpretation, "
+    "a Neither/Other guardrail, and two decision modes."
+)
 
 st.markdown(
     """
-This app uses a **TF-IDF + Logistic Regression** pipeline to classify Reddit-style text into:
+This app uses a **TF-IDF + Logistic Regression** pipeline, plus a **Neither / Other guardrail**,
+to classify text into:
+- **Neither / Other**
 - **Depression-related**
 - **SuicideWatch-related**
 
@@ -452,7 +594,7 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📂 Batch Upload",
     "📊 Model Performance",
     "🧾 Explainability",
-    "⚠️ Ethics & Safeguards"
+    "⚠️ Ethics & Safeguards",
 ])
 
 # =========================================================
@@ -465,10 +607,15 @@ def render_result_block(raw_text, result, mode_name):
     c3.metric("Uncertainty", f"{result['uncertainty']:.3f}")
     c4.metric("Risk Level", result["risk_level"])
 
-    if result["needs_review"]:
+    if result["predicted_class"] == "Neither / Other":
+        st.info("This input was identified as outside clear depression or suicide-related categories.")
+    elif result["needs_review"]:
         st.warning("This input falls into the human-review zone for the selected mode.")
     else:
         st.success("This input is outside the human-review zone for the selected mode.")
+
+    if result.get("predicted_class") == "Neither / Other" and result.get("guardrail_reason"):
+        st.info(f"Guardrail decision: {result['guardrail_reason']}")
 
     ai_info = generate_ai_explanation(
         raw_text=raw_text,
@@ -476,7 +623,7 @@ def render_result_block(raw_text, result, mode_name):
         risk_score=result["risk_score"],
         risk_level=result["risk_level"],
         needs_review=result["needs_review"],
-        mode_name=mode_name
+        mode_name=mode_name,
     )
 
     st.markdown("### 🧠 AI Explanation")
@@ -516,7 +663,7 @@ with tab1:
     sample_text = st.text_area(
         "Paste a post below",
         height=220,
-        placeholder="Enter text here..."
+        placeholder="Enter text here...",
     )
 
     col1, col2 = st.columns([1, 1])
@@ -537,12 +684,12 @@ with tab1:
         if not sample_text.strip():
             st.error("Please enter some text.")
         else:
-            result_df = predict_scores(
+            result_df = predict_with_guardrail(
                 [sample_text],
                 vectorizer,
                 model,
                 active_threshold,
-                mode
+                mode,
             )
             result = result_df.iloc[0]
 
@@ -550,7 +697,7 @@ with tab1:
 
             st.session_state.prediction_log = pd.concat(
                 [st.session_state.prediction_log, result_df],
-                ignore_index=True
+                ignore_index=True,
             )
 
     st.markdown("### Download Prediction Log")
@@ -560,7 +707,7 @@ with tab1:
             label="Download prediction log as CSV",
             data=log_csv,
             file_name="prediction_log.csv",
-            mime="text/csv"
+            mime="text/csv",
         )
         st.dataframe(st.session_state.prediction_log.tail(10), use_container_width=True)
 
@@ -598,17 +745,17 @@ to the classifier automatically.
                 with st.spinner("Transcribing and analyzing audio..."):
                     transcript = transcribe_short_wav_bytes(
                         wav_audio_data,
-                        model_name="gpt-4o-mini-transcribe"
+                        model_name="gpt-4o-mini-transcribe",
                     )
 
                     st.session_state.voice_transcript = transcript
 
-                    result_df = predict_scores(
+                    result_df = predict_with_guardrail(
                         [transcript],
                         vectorizer,
                         model,
                         active_threshold,
-                        mode
+                        mode,
                     )
                     result = result_df.iloc[0]
 
@@ -619,7 +766,7 @@ to the classifier automatically.
 
                 st.session_state.prediction_log = pd.concat(
                     [st.session_state.prediction_log, result_df],
-                    ignore_index=True
+                    ignore_index=True,
                 )
 
             except Exception as e:
@@ -652,17 +799,17 @@ Recommended column name: **text**
             if st.button("Run Batch Scoring"):
                 batch_df["text"] = batch_df["text"].fillna("").astype(str)
 
-                batch_results = predict_scores(
+                batch_results = predict_with_guardrail(
                     batch_df["text"].tolist(),
                     vectorizer,
                     model,
                     active_threshold,
-                    mode
+                    mode,
                 )
 
                 final_batch = pd.concat(
                     [batch_df.reset_index(drop=True), batch_results.drop(columns=["original_text"])],
-                    axis=1
+                    axis=1,
                 )
 
                 st.markdown("### Batch Results")
@@ -673,29 +820,30 @@ Recommended column name: **text**
                     label="Download batch results as CSV",
                     data=batch_csv,
                     file_name="batch_predictions.csv",
-                    mime="text/csv"
+                    mime="text/csv",
                 )
 
                 st.markdown("### Batch Summary")
-                summary_counts = final_batch["risk_level"].value_counts().reset_index()
-                summary_counts.columns = ["risk_level", "count"]
-
-                risk_order = ["Low", "Moderate", "Moderate / Review", "High"]
-                summary_counts["risk_level"] = pd.Categorical(
-                    summary_counts["risk_level"],
-                    categories=risk_order,
-                    ordered=True
-                )
-                summary_counts = summary_counts.sort_values("risk_level")
-
+                summary_counts = final_batch["predicted_class"].value_counts().reset_index()
+                summary_counts.columns = ["predicted_class", "count"]
                 st.dataframe(summary_counts, use_container_width=True)
 
                 st.markdown("### Risk Level Distribution")
-                chart_df = summary_counts.set_index("risk_level")
+                risk_summary = final_batch["risk_level"].value_counts().reset_index()
+                risk_summary.columns = ["risk_level", "count"]
+
+                risk_order = ["Low", "Moderate", "Moderate / Review", "High"]
+                risk_summary["risk_level"] = pd.Categorical(
+                    risk_summary["risk_level"],
+                    categories=risk_order,
+                    ordered=True,
+                )
+                risk_summary = risk_summary.sort_values("risk_level")
+
+                chart_df = risk_summary.set_index("risk_level")
                 st.bar_chart(chart_df["count"])
 
                 st.markdown("### 🧠 AI Batch Summary")
-
                 with st.spinner("Generating AI summary for batch results..."):
                     batch_ai_summary = generate_batch_ai_summary(final_batch)
 
@@ -722,24 +870,24 @@ with tab4:
         "Mode": ["Balanced Mode", "Safety Mode"],
         "Threshold": [
             metrics["balanced"]["threshold"],
-            metrics["safety"]["threshold"]
+            metrics["safety"]["threshold"],
         ],
         "Accuracy": [
             metrics["balanced"]["accuracy"],
-            metrics["safety"]["accuracy"]
+            metrics["safety"]["accuracy"],
         ],
         "F1 (Class 1)": [
             metrics["balanced"]["f1_class1"],
-            metrics["safety"]["f1_class1"]
+            metrics["safety"]["f1_class1"],
         ],
         "Recall (Class 1)": [
             metrics["balanced"]["report"]["1"]["recall"],
-            metrics["safety"]["report"]["1"]["recall"]
+            metrics["safety"]["report"]["1"]["recall"],
         ],
         "Precision (Class 1)": [
             metrics["balanced"]["report"]["1"]["precision"],
-            metrics["safety"]["report"]["1"]["precision"]
-        ]
+            metrics["safety"]["report"]["1"]["precision"],
+        ],
     })
 
     st.dataframe(summary_df, use_container_width=True)
@@ -753,7 +901,7 @@ with tab4:
         cm_bal = pd.DataFrame(
             metrics["balanced"]["confusion_matrix"],
             index=["Actual 0", "Actual 1"],
-            columns=["Pred 0", "Pred 1"]
+            columns=["Pred 0", "Pred 1"],
         )
         st.dataframe(cm_bal, use_container_width=True)
 
@@ -762,7 +910,7 @@ with tab4:
         cm_safe = pd.DataFrame(
             metrics["safety"]["confusion_matrix"],
             index=["Actual 0", "Actual 1"],
-            columns=["Pred 0", "Pred 1"]
+            columns=["Pred 0", "Pred 1"],
         )
         st.dataframe(cm_safe, use_container_width=True)
 
@@ -808,6 +956,7 @@ This system is designed as a research prototype for risk signal triage in social
 ### Safeguards Included
 - dual operating modes for different risk tolerances
 - uncertainty-aware review logic
+- Neither / Other guardrail for non-mental-health text
 - human-review recommendation for borderline cases
 - transparent model behavior through feature inspection
 - AI-generated interpretation layer for explanation only
@@ -816,10 +965,14 @@ This system is designed as a research prototype for risk signal triage in social
 - labels may overlap semantically
 - text alone does not capture full human context
 - false positives and false negatives remain possible
+- the Neither / Other category is currently rule-assisted, not learned from a dedicated third class
 - performance depends on the training dataset and its assumptions
 - AI explanations are supportive interpretations, not ground truth
 """
     )
 
 st.markdown("---")
-st.caption("Built with Streamlit, TF-IDF, Logistic Regression, browser audio recording, OpenAI speech-to-text, and AI-generated explanations.")
+st.caption(
+    "Built with Streamlit, TF-IDF, Logistic Regression, a Neither/Other guardrail, "
+    "browser audio recording, OpenAI speech-to-text, and AI-generated explanations."
+)
