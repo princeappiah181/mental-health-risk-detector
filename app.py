@@ -584,8 +584,7 @@ st.caption(
     "An AI-powered system that analyzes text and voice to identify early signals of emotional distress and support risk-aware decision making."
 )
 
-st.markdown(
-    """
+st.markdown("""
 This tool classifies input into:
 - ** No concern (Neither / Other)**
 - **Depression-related signals**
@@ -620,8 +619,8 @@ People often express distress in subtle ways. This system demonstrates how AI ca
 
 This is a research and decision-support tool, not a clinical system.
 It is designed to assist awareness and human judgment, not replace professional evaluation.
-"""
-)
+
+""")
 
 # =========================================================
 # TABS
