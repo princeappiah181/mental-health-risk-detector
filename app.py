@@ -77,14 +77,6 @@ def clean_text(text: str) -> str:
 # NEITHER / OTHER GUARDRAIL
 # =========================================================
 def detect_neither_other(text: str):
-    """
-    Returns:
-    {
-        "is_neither": bool,
-        "label": str | None,
-        "reason": str | None
-    }
-    """
     text_l = clean_text(text)
 
     exact_non_mh_phrases = {
@@ -125,6 +117,12 @@ def detect_neither_other(text: str):
         "stupid", "shut up", "fight me", "come at me",
     ]
 
+    positive_or_neutral_markers = [
+        "good", "great", "happy", "fun", "food", "drinks",
+        "enjoyed", "nice", "beautiful", "love this", "awesome",
+        "amazing", "had a good day", "today was good"
+    ]
+
     if text_l in exact_non_mh_phrases:
         return {
             "is_neither": True,
@@ -132,28 +130,49 @@ def detect_neither_other(text: str):
             "reason": "Common slang or non-mental-health phrase detected without clear depression or self-harm cues."
         }
 
-    if len(text_l.split()) <= 6:
-        if not any(cue in text_l for cue in mh_cues + softer_distress_cues):
-            return {
-                "is_neither": True,
-                "label": "Neither / Other",
-                "reason": "Short text with no clear mental-health-related cues."
-            }
+    has_strong_mh = any(cue in text_l for cue in mh_cues)
+    has_soft_distress = any(cue in text_l for cue in softer_distress_cues)
+    has_aggressive = any(marker in text_l for marker in aggressive_markers)
+    has_positive_neutral = any(marker in text_l for marker in positive_or_neutral_markers)
 
-    if any(marker in text_l for marker in aggressive_markers):
-        if not any(cue in text_l for cue in mh_cues + softer_distress_cues):
-            return {
-                "is_neither": True,
-                "label": "Neither / Other",
-                "reason": "Aggressive or confrontational language detected without clear distress or self-harm signals."
-            }
+    # Strongest rule:
+    # if no mental-health cues at all, classify as Neither / Other
+    if not has_strong_mh and not has_soft_distress:
+        return {
+            "is_neither": True,
+            "label": "Neither / Other",
+            "reason": "No clear depression, suicide, or emotional-distress cues detected."
+        }
+
+    # Very short text with no MH cues
+    if len(text_l.split()) <= 6 and not has_strong_mh and not has_soft_distress:
+        return {
+            "is_neither": True,
+            "label": "Neither / Other",
+            "reason": "Short text with no clear mental-health-related cues."
+        }
+
+    # Aggressive but not MH-related
+    if has_aggressive and not has_strong_mh and not has_soft_distress:
+        return {
+            "is_neither": True,
+            "label": "Neither / Other",
+            "reason": "Aggressive or confrontational language detected without clear distress or self-harm signals."
+        }
+
+    # Positive/neutral everyday text without MH cues
+    if has_positive_neutral and not has_strong_mh and not has_soft_distress:
+        return {
+            "is_neither": True,
+            "label": "Neither / Other",
+            "reason": "Neutral or positive everyday language detected without clear mental-health-related signals."
+        }
 
     return {
         "is_neither": False,
         "label": None,
         "reason": None
     }
-
 # =========================================================
 # HELPERS
 # =========================================================
