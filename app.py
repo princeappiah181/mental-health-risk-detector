@@ -584,9 +584,10 @@ st.caption(
     "An AI-powered system that analyzes text and voice to identify early signals of emotional distress and support risk-aware decision making."
 )
 
-st.markdown("""
+st.markdown(
+    """
 This tool classifies input into:
-- ** No concern (Neither / Other)**
+- **No concern (Neither / Other)**
 - **Depression-related signals**
 - **Suicide-related signals**
 
@@ -597,30 +598,27 @@ Each analysis includes:
 - A **review recommendation**
 - An **AI-generated explanation**
 
-
 **Key Capabilities**
-    - **Multi-modal input: supports both text and voice.**
-    -  **Real-time analysis: instant classification and feedback.**
-    -  **Explainable AI: translates model output into human-understandable insights.**
-    -  **False-positive control: includes a Neither / Other guardrail to filter non-relevant language.**
-    -  **Batch intelligence: summarizes patterns across multiple messages for triage-style workflows.**
-
+- **Multi-modal input:** supports both text and voice.
+- **Real-time analysis:** instant classification and feedback.
+- **Explainable AI:** translates model output into human-understandable insights.
+- **False-positive control:** includes a Neither / Other guardrail to filter non-relevant language.
+- **Batch intelligence:** summarizes patterns across multiple messages for triage-style workflows.
 
 **Why this matters**
 
 People often express distress in subtle ways. This system demonstrates how AI can:
-    -   Detect early warning signals in language
-    -    Reduce missed high-risk cases
-    -   Provide interpretable outputs for human review
-    -    Bridge the gap between raw predictions and actionable insights
-
+- Detect early warning signals in language
+- Reduce missed high-risk cases
+- Provide interpretable outputs for human review
+- Bridge the gap between raw predictions and actionable insights
 
 **⚠️ Responsible Use**
 
-This is a research and decision-support tool, not a clinical system.
+This is a research and decision-support tool, not a clinical system.  
 It is designed to assist awareness and human judgment, not replace professional evaluation.
-
-""")
+"""
+)
 
 # =========================================================
 # TABS
