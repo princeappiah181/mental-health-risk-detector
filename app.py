@@ -615,7 +615,7 @@ Each analysis provides:
 - **Multi-modal input:** Supports both text and voice  
 - **Real-time analysis:** Instant classification and feedback  
 - **Explainable AI:** Converts model outputs into human-understandable insights  
-- **False-positive control:** Uses a *Neither / Other* guardrail to filter non-relevant language  
+- **False-positive control:** Uses a Neither / Other guardrail to filter non-relevant language  
 - **Batch intelligence:** Summarizes patterns across multiple inputs  
 
 ---
