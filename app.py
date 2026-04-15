@@ -606,7 +606,7 @@ Each analysis provides:
 - **Risk level**
 - **Uncertainty (confidence)**
 - **Review recommendation**
-- **AI-generated explanation in plain English**
+- **AI-generated explanation**
 
 ---
 
