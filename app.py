@@ -22,7 +22,6 @@ from st_audiorec import st_audiorec
 # =========================================================
 st.set_page_config(
     page_title="Explainable AI Risk Signal Detection System",
-    page_icon="🧠",
     layout="wide"
 )
 
@@ -579,7 +578,7 @@ st.sidebar.write("**1** = SuicideWatch-related")
 # =========================================================
 # MAIN HEADER
 # =========================================================
-st.title("🧠 Explainable AI Risk Signal Detection System ")
+st.title(" Explainable AI Risk Signal Detection System ")
 
 st.markdown(
     """
@@ -610,7 +609,7 @@ Each analysis provides:
 
 ---
 
-### 🚀 Key Capabilities
+###  Key Capabilities
 
 - **Multi-modal input:** Supports both text and voice  
 - **Real-time analysis:** Instant classification and feedback  
@@ -620,7 +619,7 @@ Each analysis provides:
 
 ---
 
-### 💡 Why this matters
+### Why this matters
 
 People often express distress in subtle ways. This system demonstrates how AI can:
 
@@ -678,17 +677,17 @@ def render_result_block(raw_text, result, mode_name):
         mode_name=mode_name,
     )
 
-    st.markdown("### 🧠 AI Explanation")
+    st.markdown("###  AI Explanation")
     st.write(ai_info["explanation"])
 
-    st.markdown("### 🔎 Detected Signals")
+    st.markdown("###  Detected Signals")
     if ai_info["detected_signals"]:
         for sig in ai_info["detected_signals"]:
             st.write(f"- {sig}")
     else:
         st.write("- No clear signals extracted")
 
-    st.markdown("### ⚠️ Suggested Action")
+    st.markdown("###  Suggested Action")
     st.info(ai_info["suggested_action"])
 
     with st.expander("View cleaned text used by the model"):
@@ -895,7 +894,7 @@ Recommended column name: **text**
                 chart_df = risk_summary.set_index("risk_level")
                 st.bar_chart(chart_df["count"])
 
-                st.markdown("### 🧠 AI Batch Summary")
+                st.markdown("###  AI Batch Summary")
                 with st.spinner("Generating AI summary for batch results..."):
                     batch_ai_summary = generate_batch_ai_summary(final_batch)
 
