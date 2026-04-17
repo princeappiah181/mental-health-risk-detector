@@ -592,7 +592,7 @@ with risk scoring, uncertainty awareness, and explainable insights.
 
 st.markdown(
     """
-### 🔍 What this app does
+###  What this app does
 
 This tool analyzes text or voice input and classifies it into:
 
